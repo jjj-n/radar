@@ -15,10 +15,24 @@ import (
 // whole process before any informer starts. Setting KUBE_FEATURE_WatchListClient
 // explicitly keeps client-go's env-var handling in charge instead.
 func init() {
-	if _, set := os.LookupEnv("KUBE_FEATURE_WatchListClient"); set {
+	if v, set := os.LookupEnv("KUBE_FEATURE_WatchListClient"); set {
+		streamingListsMode = "env:" + v
 		return
 	}
 	clientfeatures.ReplaceFeatureGates(watchListDisabledGates{clientfeatures.FeatureGates()})
+}
+
+// streamingListsMode records who decided the WatchListClient state, for the
+// startup log and the diagnostics snapshot. Written once in init.
+var streamingListsMode = "disabled (default)"
+
+// StreamingListsMode reports the effective WatchListClient policy:
+// "disabled (default)" when radar forced the gate off, or "env:<value>" when
+// an explicit KUBE_FEATURE_WatchListClient left client-go in charge. Surfaced
+// in the diagnostics snapshot so support can tell the two apart without
+// asking the user to inspect their environment.
+func StreamingListsMode() string {
+	return streamingListsMode
 }
 
 type watchListDisabledGates struct {

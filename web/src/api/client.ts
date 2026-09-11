@@ -6885,6 +6885,8 @@ export interface DiagnosticsSnapshot {
     debugEvents: boolean;
     mcpEnabled: boolean;
     hasPrometheusURL: boolean;
+    // "disabled (default)" or "env:<value>" — WatchListClient policy (#1303)
+    streamingLists?: string;
     hasPrometheusHeaders: boolean;
   };
   recentErrors?: DiagErrorEntry[];
