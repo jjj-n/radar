@@ -2386,7 +2386,7 @@ function AppInner({ manageDocumentTitle = false, documentTitleSuffix, onClusterL
           <CostView namespaces={namespaces} onBack={() => setMainView('home')} onOpenResource={navigateToResource} />
         )}
 
-        {mainView === 'capacity' && (
+        {!viewsSyncGated && mainView === 'capacity' && (
           <CapacityView onOpenResource={navigateToResource} />
         )}
 
