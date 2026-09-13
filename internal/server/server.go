@@ -2633,7 +2633,7 @@ func (s *Server) gateResourceRead(w http.ResponseWriter, kind, group string) (*k
 	}
 	cache, readiness := k8s.ReadableCacheForKind(key)
 	if cache == nil {
-		s.writeError(w, http.StatusServiceUnavailable, "Not connected to cluster")
+		s.writeNotConnected(w)
 		return nil, false
 	}
 	switch readiness {

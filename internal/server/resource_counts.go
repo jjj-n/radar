@@ -143,9 +143,17 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 	for _, kl := range k8score.AllKindListers() {
 		// An unsynced informer has a partial (or empty) store — its count is
 		// not a fact yet. Unavailable keeps the sidebar badge at "–" and the
-		// large-list guard latched.
-		if synced, known := cache.InformerSyncedByKind(kl.Kind()); known && !synced {
+		// large-list guard latched. A terminally-failed kind carries a reason
+		// so the client can hand it to the list endpoint, whose 503
+		// kind_sync_failed renders honestly (the guard would otherwise trap
+		// it on "count unavailable" forever).
+		switch cache.KindReadinessForKindName(kl.Kind()) {
+		case k8score.KindPending:
 			markUnavailable(kl.CountKey())
+			continue
+		case k8score.KindFailed:
+			markUnavailable(kl.CountKey())
+			reasons[kl.CountKey()] = "kind_sync_failed"
 			continue
 		}
 		l := kl.Lister()(cache.ResourceCache)

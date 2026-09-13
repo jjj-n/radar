@@ -216,14 +216,20 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
   // unguarded on exactly the clusters the guard protects. Counts arrive
   // right after 'connected' and settle the guard then.
   const syncShellActive = connection.state === 'connecting'
+  // A kind whose sync deadline fired is unavailable-with-a-reason: hand it to
+  // the list endpoint, whose 503 kind_sync_failed renders the honest error —
+  // the guard would otherwise trap it on "count unavailable" forever. Safe to
+  // unblock: the server serves no rows for a failed kind.
+  const selectedCountFailedSync =
+    selectedCountUnavailable && countsData?.reasons?.[selectedCountKey] === 'kind_sync_failed'
   // Mid-sync, a guarded kind whose informer hasn't finished reports
   // "unavailable" — that means "count not known yet", so keep the loading
   // state; once connected, unavailable is a real verification failure and
   // blocks the view as before.
-  const selectedCountPendingSync = syncShellActive && selectedCountUnavailable
+  const selectedCountPendingSync = syncShellActive && selectedCountUnavailable && !selectedCountFailedSync
   const waitingForGuardCount = isSelectedKindGuarded &&
     ((!countsData && (!countsIsError || syncShellActive)) || selectedCountPendingSync)
-  const largeListBlocked = isSelectedKindGuarded && countsData != null && !selectedCountPendingSync &&
+  const largeListBlocked = isSelectedKindGuarded && countsData != null && !selectedCountPendingSync && !selectedCountFailedSync &&
     (selectedCountUnavailable || (selectedCountKnown && (selectedCount ?? 0) > selectedKindRowLimit))
   const selectedKindQueryBlocked = waitingForGuardCount || largeListBlocked
   const podCount = countsData?.counts.Pod

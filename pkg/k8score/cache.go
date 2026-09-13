@@ -1551,17 +1551,12 @@ func (rc *ResourceCache) KindNamespaces(resource string) []string {
 }
 
 func (rc *ResourceCache) IsKindReady(resource string) bool {
-	if rc == nil {
-		return false
-	}
-	rc.informerMu.RLock()
-	defer rc.informerMu.RUnlock()
-	for _, status := range rc.informerStatuses {
-		if status.Key == resource {
-			return status.Synced
-		}
-	}
-	return false
+	// Answer from the informer's own HasSynced, like every other readiness
+	// probe — the tracked Synced flag lags it, so capacity checks and
+	// missing-reference detectors would briefly disagree with what the
+	// resource handlers already serve.
+	synced, known := rc.InformerSynced(resource)
+	return known && synced
 }
 
 // ChangesRaw returns the bidirectional channel for internal use.
@@ -1822,24 +1817,26 @@ func AllKindListers() []kindLister {
 	return allKindListers
 }
 
-// InformerSyncedByKind is InformerSynced keyed by the Kind name ("Pod")
-// instead of the informer key ("pods") — for callers that enumerate the
-// kindLister table, which carries Kinds only.
-func (rc *ResourceCache) InformerSyncedByKind(kind string) (synced, known bool) {
+// KindReadinessForKindName is KindReadinessFor keyed by the Kind name
+// ("Pod") instead of the informer key ("pods") — for callers that enumerate
+// the kindLister table, which carries Kinds only.
+func (rc *ResourceCache) KindReadinessForKindName(kind string) KindReadiness {
 	if rc == nil {
-		return false, false
+		return KindUnavailable
 	}
+	key := ""
 	rc.informerMu.RLock()
-	defer rc.informerMu.RUnlock()
-	for i, status := range rc.informerStatuses {
+	for _, status := range rc.informerStatuses {
 		if status.Kind == kind {
-			if i < len(rc.informerHasSynced) && rc.informerHasSynced[i] != nil {
-				return rc.informerHasSynced[i](), true
-			}
-			return status.Synced, true
+			key = status.Key
+			break
 		}
 	}
-	return false, false
+	rc.informerMu.RUnlock()
+	if key == "" {
+		return KindUnavailable
+	}
+	return rc.KindReadinessFor(key)
 }
 
 // Kind returns the resource kind name.
