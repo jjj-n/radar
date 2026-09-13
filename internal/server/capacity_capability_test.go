@@ -130,7 +130,7 @@ func TestLoadCapacityNodeClassesDistinguishesPartialDiscoveryFromAbsentAPI(t *te
 				APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
 			}}
 			if test.failed {
-				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+				fakeDiscovery.PrependReactor("get", "group", func(k8stesting.Action) (bool, runtime.Object, error) {
 					return true, nil, errors.New("discovery unavailable")
 				})
 			}
@@ -176,7 +176,7 @@ func TestLoadCapacityNodeClaimsDistinguishesPartialDiscoveryFromAbsentAPI(t *tes
 				APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
 			}}
 			if test.failed {
-				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+				fakeDiscovery.PrependReactor("get", "group", func(k8stesting.Action) (bool, runtime.Object, error) {
 					return true, nil, errors.New("discovery unavailable")
 				})
 			}

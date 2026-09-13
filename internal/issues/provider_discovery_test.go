@@ -24,7 +24,7 @@ func TestKarpenterDiscoveryFailureDoesNotClaimNotInstalled(t *testing.T) {
 	if got := p.karpenterResourceDiscovery("karpenter.sh", "NodePool"); got != karpenterCoverageNotInstalled {
 		t.Fatalf("clean absence = %v", got)
 	}
-	client.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+	client.PrependReactor("get", "group", func(k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, errors.New("discovery unavailable")
 	})
 	_ = d.Refresh()

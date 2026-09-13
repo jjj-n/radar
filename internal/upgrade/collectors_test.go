@@ -3,6 +3,10 @@ package upgrade
 import (
 	"context"
 	"errors"
+	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/skyhook-io/radar/pkg/k8score"
+	fakediscovery "k8s.io/client-go/discovery/fake"
+	fakeclientset "k8s.io/client-go/kubernetes/fake"
 	"slices"
 	"testing"
 
@@ -242,5 +246,43 @@ func TestCollectUpgradeWebhookConfigurationsDoesNotClassifyFailedAuthorizationAs
 	configs, unavailable, denied := collectUpgradeWebhookConfigurations(t.Context(), client, authz)
 	if len(configs) != 0 || !slices.Equal(unavailable, []string{"validatingwebhookconfigurations"}) || len(denied) != 0 {
 		t.Fatalf("webhook evidence = configs=%v unavailable=%v denied=%v, want an unattributed authorization-check failure", configs, unavailable, denied)
+	}
+}
+
+func TestUpgradeSourceInventoryKeepsItsDiscoveryCoverageDuringRecovery(t *testing.T) {
+	client := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(), map[schema.GroupVersionResource]string{{Version: "v1", Resource: "pods"}: "PodList"})
+	if err := k8s.InitTestDynamicResourceCache(client, nil); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(k8s.ResetTestDynamicState)
+	fakeDisc := fakeclientset.NewSimpleClientset().Discovery().(*fakediscovery.FakeDiscovery)
+	fakeDisc.Resources = []*metav1.APIResourceList{{GroupVersion: "v1", APIResources: []metav1.APIResource{{Kind: "Pod", Name: "pods", Namespaced: true, Verbs: metav1.Verbs{"list"}}}}}
+	core, err := k8score.NewResourceDiscovery(fakeDisc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k8s.GetResourceDiscovery().ResourceDiscovery = core
+	if _, unavailable := collectUpgradeSourceObjects(context.Background(), nil); len(unavailable) != 0 {
+		t.Fatalf("clean inventory unavailable: %v", unavailable)
+	}
+	fakeDisc.PrependReactor("get", "group", func(ktesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("discovery unavailable")
+	})
+	if err := core.Refresh(); err == nil {
+		t.Fatal("expected discovery failure")
+	}
+	client.PrependReactor("list", "pods", func(ktesting.Action) (bool, runtime.Object, error) {
+		fakeDisc.ReactionChain = fakeDisc.ReactionChain[1:]
+		if err := core.Refresh(); err != nil {
+			t.Fatal(err)
+		}
+		return false, nil, nil
+	})
+	_, unavailable := collectUpgradeSourceObjects(context.Background(), nil)
+	if core.Snapshot().Incomplete() {
+		t.Fatal("discovery did not recover during list")
+	}
+	if !slices.Contains(unavailable, "source-object discovery") {
+		t.Fatalf("partial catalogue borrowed recovered coverage: %v", unavailable)
 	}
 }

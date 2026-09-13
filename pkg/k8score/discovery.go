@@ -294,6 +294,7 @@ func (s DiscoverySnapshot) GroupIncomplete(group string) bool {
 	return s.failedGroups[group] || (!s.complete && len(s.failedGroups) == 0)
 }
 
+// ConfirmsAbsence matches groups exactly; an empty group means core APIs only.
 func (s DiscoverySnapshot) ConfirmsAbsence(kindOrName, group string) bool {
 	if s.GroupIncomplete(group) {
 		return false
@@ -314,8 +315,12 @@ func (d *ResourceDiscovery) Snapshot() DiscoverySnapshot {
 	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
+	resources := d.apiResourcesLocked()
+	for i := range resources {
+		resources[i].Verbs = slices.Clone(resources[i].Verbs)
+	}
 	return DiscoverySnapshot{
-		Resources:    d.apiResourcesLocked(),
+		Resources:    resources,
 		complete:     !d.partial && !d.lastRefresh.IsZero(),
 		failedGroups: maps.Clone(d.failedGroup),
 	}
@@ -507,9 +512,6 @@ func (d *ResourceDiscovery) apiResourcesLocked() []APIResource {
 		}
 	}
 
-	for i := range result {
-		result[i].Verbs = slices.Clone(result[i].Verbs)
-	}
 	return result
 }
 
