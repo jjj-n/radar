@@ -26,6 +26,6 @@ func TestProcessDefaultDisablesWatchListStreaming(t *testing.T) {
 		t.Skip("explicit KUBE_FEATURE_WatchListClient override present in this environment")
 	}
 	if clientfeatures.FeatureGates().Enabled(clientfeatures.WatchListClient) {
-		t.Fatal("package init must leave WatchListClient disabled for the process (#1303)")
+		t.Fatal("package init must leave WatchListClient disabled for the process")
 	}
 }

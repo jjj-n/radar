@@ -34,7 +34,7 @@ type DiagConfig struct {
 	HasPrometheusHeaders bool   `json:"hasPrometheusHeaders"`
 	// StreamingLists reports the effective WatchListClient policy —
 	// "disabled (default)" or "env:<value>" — so support can see from a
-	// snapshot whether streaming initial lists were in play (#1303).
+	// snapshot whether streaming initial lists were in play.
 	StreamingLists string `json:"streamingLists,omitempty"`
 }
 

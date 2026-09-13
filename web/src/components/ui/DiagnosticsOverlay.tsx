@@ -593,6 +593,7 @@ function ConfigSection({ data }: { data: DiagnosticsSnapshot }) {
       <Row label="MCP Enabled" value={cfg.mcpEnabled ? 'Yes' : 'No'} />
       <Row label="Prometheus URL" value={cfg.hasPrometheusURL ? 'Set' : 'Auto-discover'} />
       <Row label="Prometheus Headers" value={cfg.hasPrometheusHeaders ? 'Set' : 'None'} />
+      {cfg.streamingLists && <Row label="Streaming Lists" value={cfg.streamingLists} />}
     </Section>
   )
 }
