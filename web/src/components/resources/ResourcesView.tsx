@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ApiError, debugNamespaceLog, fetchJSON, isForbiddenError, isKindSyncFailed, isKindSyncPending, useCapabilities, useNamespaceCapabilities, useResources, useSecretCertExpiry, useTopPodMetrics, useTopNodeMetrics, useBulkDeleteResources, useBulkRestartWorkloads, useBulkScaleWorkloads, useAudit } from '../../api/client'
+import { ApiError, debugNamespaceLog, fetchJSON, isForbiddenError, isKindSyncFailed, isStillLoadingError, useCapabilities, useNamespaceCapabilities, useResources, useSecretCertExpiry, useTopPodMetrics, useTopNodeMetrics, useBulkDeleteResources, useBulkRestartWorkloads, useBulkScaleWorkloads, useAudit } from '../../api/client'
 import { isBadgeWorthy } from '../../utils/auditBadges'
 import type { AuditBadgeMessage } from '@skyhook-io/k8s-ui'
 import { apiUrl, getAuthHeaders, getCredentialsMode, stripBasename } from '../../api/config'
@@ -144,6 +144,14 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
     },
     staleTime: 10000,
     refetchInterval: 60000, // Safety net — SSE k8s_event drives near-real-time invalidation
+    // During the first seconds of the progressive shell the endpoint 503s
+    // (cluster_connecting) until the mid-sync cache handle exists; keep the
+    // query pending rather than parking it in error state, which would
+    // unlatch the large-list guard at the connected flip.
+    retry: (failureCount: number, error: Error) =>
+      isStillLoadingError(error) ? true : failureCount < 3,
+    retryDelay: (failureCount: number, error: Error) =>
+      isStillLoadingError(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
   })
 
   // Determine if selected kind is a CRD (only CRDs should send ?group= to backend)
@@ -205,8 +213,15 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
   // unguarded on exactly the clusters the guard protects. Counts arrive
   // right after 'connected' and settle the guard then.
   const syncShellActive = connection.state === 'connecting'
-  const waitingForGuardCount = isSelectedKindGuarded && !countsData && (!countsIsError || syncShellActive)
-  const largeListBlocked = isSelectedKindGuarded && countsData != null && (selectedCountUnavailable || (selectedCountKnown && (selectedCount ?? 0) > selectedKindRowLimit))
+  // Mid-sync, a guarded kind whose informer hasn't finished reports
+  // "unavailable" — that means "count not known yet", so keep the loading
+  // state; once connected, unavailable is a real verification failure and
+  // blocks the view as before.
+  const selectedCountPendingSync = syncShellActive && selectedCountUnavailable
+  const waitingForGuardCount = isSelectedKindGuarded &&
+    ((!countsData && (!countsIsError || syncShellActive)) || selectedCountPendingSync)
+  const largeListBlocked = isSelectedKindGuarded && countsData != null && !selectedCountPendingSync &&
+    (selectedCountUnavailable || (selectedCountKnown && (selectedCount ?? 0) > selectedKindRowLimit))
   const selectedKindQueryBlocked = waitingForGuardCount || largeListBlocked
   const podCount = countsData?.counts.Pod
   const podCountKnown = hasResourceCount(countsData?.counts, 'Pod')
@@ -291,14 +306,14 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
     refetchInterval: 120000, // Safety net — SSE k8s_event drives near-real-time invalidation
     retry: (failureCount: number, error: Error) => {
       if (isForbiddenError(error) || isKindSyncFailed(error)) return false
-      // Initial informer sync still running for this kind: keep the query in
-      // its loading state and retry until the kind becomes readable — the
-      // header's sync-progress label explains the wait.
-      if (isKindSyncPending(error)) return true
+      // Cluster still connecting, or this kind's informer still completing
+      // its initial sync: keep the query in its loading state and retry —
+      // the header's sync-progress label explains the wait.
+      if (isStillLoadingError(error)) return true
       return failureCount < 3
     },
     retryDelay: (failureCount: number, error: Error) =>
-      isKindSyncPending(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
+      isStillLoadingError(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
   })
 
   // Map to ResourceQueryResult shape
@@ -409,7 +424,7 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
       resourceUnavailable={countsData?.unavailable}
       selectedKindQuery={selectedKindQueryResult}
       printerTable={selectedKindQueryBlocked ? null : selectedKindQuery.data?.printerTable ?? null}
-      connectionState={connection.state}
+      connectionState={connection.state === 'connecting' && connection.syncStatus ? 'syncing' : connection.state}
       largeListGuard={largeListGuard}
       onSelectedKindChange={setSelectedKind}
       topPodMetrics={topPodMetrics}

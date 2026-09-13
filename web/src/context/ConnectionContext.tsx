@@ -217,7 +217,12 @@ export function ConnectionProvider({ children }: { children: ReactNode }) {
     if (current.state === 'connecting' && data.state === 'connecting' &&
         data.syncStatus && cacheWarmAtMountRef.current) {
       cacheWarmAtMountRef.current = false
-      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'connection-status' })
+      // Drop only cluster-scoped data. App chrome (auth identity, kubeconfig
+      // contexts) is not another cluster's data, and purging it flips
+      // authMePending back on — which holds the whole shell on the splash
+      // until /auth/me refetches, delaying the first progressive paint.
+      const keep = new Set(['connection-status', 'auth-me', 'contexts'])
+      queryClient.removeQueries({ predicate: (q) => !keep.has(String(q.queryKey[0])) })
     }
     if (!shouldApplyPolledConnection(
       current.state,

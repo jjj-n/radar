@@ -899,16 +899,20 @@ func NewResourceCache(cfg CacheConfig) (*ResourceCache, error) {
 	case timedOut:
 		stdlog.Printf("WARNING: Critical sync timed out after %v — promoting %d informers to deferred: %s",
 			cfg.SyncTimeout, len(promoted), strings.Join(promoted, ", "))
-		stdlog.Printf("UI will render with partial data; promoted informers continue syncing in background")
+		stdlog.Printf("UI renders now; promoted kinds keep syncing in background and their views stay in a loading state until complete")
 		logf("    Phase 1 sync TIMED OUT (%d critical, %d promoted to deferred): %v",
 			len(criticalSyncFuncs), len(promoted), time.Since(syncStart))
+		rc.informerMu.Lock()
 		rc.promotedKinds = promoted
+		rc.informerMu.Unlock()
 	case patienceElapsed && len(promoted) > 0:
 		stdlog.Printf("First-paint ready after %v: minimal set synced; %d slower informers continue in background: %s",
 			time.Since(syncStart), len(promoted), strings.Join(promoted, ", "))
 		logf("    Phase 1 minimal-set sync (%d/%d critical, %d still loading): %v",
 			len(criticalSyncFuncs)-len(promoted), len(criticalSyncFuncs), len(promoted), time.Since(syncStart))
+		rc.informerMu.Lock()
 		rc.promotedKinds = promoted
+		rc.informerMu.Unlock()
 	default:
 		logf("    Phase 1 sync (%d critical informers): %v", len(criticalSyncFuncs), time.Since(syncStart))
 		stdlog.Printf("Critical resource caches synced in %v — UI can render", time.Since(syncStart))
@@ -952,15 +956,20 @@ func NewResourceCache(cfg CacheConfig) (*ResourceCache, error) {
 
 	rc.syncComplete.Store(true)
 
-	// Build deferred tracking state (includes both deferred and background keys)
+	// Build deferred tracking state (includes both deferred and background keys).
+	// The handle is already published to HTTP handlers (OnInformersStarted), so
+	// these fields must be installed under deferredMu — /api/connection polls
+	// GetSyncSnapshot sub-second during the connecting phase and reads them.
 	allDeferredKeys := append(append([]string{}, deferredKeys...), backgroundKeys...)
 	deferredSynced := make(map[string]bool, len(allDeferredKeys))
 	for _, k := range allDeferredKeys {
 		deferredSynced[k] = false
 	}
 	deferredDone := make(chan struct{})
+	rc.deferredMu.Lock()
 	rc.deferredSynced = deferredSynced
 	rc.deferredDone = deferredDone
+	rc.deferredMu.Unlock()
 
 	// Phase 2: Start deferred informers now that critical sync is done,
 	// then wait for them in background. This staggers the API server load.
@@ -1572,6 +1581,8 @@ func (rc *ResourceCache) PromotedKinds() []string {
 	if rc == nil {
 		return nil
 	}
+	rc.informerMu.RLock()
+	defer rc.informerMu.RUnlock()
 	return rc.promotedKinds
 }
 
@@ -1580,11 +1591,14 @@ func (rc *ResourceCache) PromotedKinds() []string {
 // background informers finish, so a UI bound to this method shows a
 // truthful "still loading" indicator.
 func (rc *ResourceCache) PendingPromotedKinds() []string {
-	if rc == nil || len(rc.promotedKinds) == 0 {
+	if rc == nil {
 		return nil
 	}
 	rc.informerMu.RLock()
 	defer rc.informerMu.RUnlock()
+	if len(rc.promotedKinds) == 0 {
+		return nil
+	}
 	syncedByKind := make(map[string]bool, len(rc.informerStatuses))
 	for _, s := range rc.informerStatuses {
 		if s.Synced {
@@ -1615,8 +1629,15 @@ func (rc *ResourceCache) IsDeferredSynced() bool {
 	if rc == nil {
 		return false
 	}
+	rc.deferredMu.RLock()
+	done := rc.deferredDone
+	rc.deferredMu.RUnlock()
+	if done == nil {
+		// Phase 1 still running: tracking state not installed yet.
+		return false
+	}
 	select {
-	case <-rc.deferredDone:
+	case <-done:
 		return !rc.deferredFailed.Load()
 	default:
 		return false
@@ -1629,6 +1650,8 @@ func (rc *ResourceCache) DeferredDone() <-chan struct{} {
 	if rc == nil {
 		return nil
 	}
+	rc.deferredMu.RLock()
+	defer rc.deferredMu.RUnlock()
 	return rc.deferredDone
 }
 
@@ -1720,7 +1743,7 @@ func (rc *ResourceCache) GetSyncStatus() CacheSyncStatus {
 		Informers:       statuses,
 		PendingCritical: pendingCritical,
 		PendingDeferred: pendingDeferred,
-		PromotedKinds:   rc.promotedKinds,
+		PromotedKinds:   rc.PromotedKinds(),
 	}
 	if !rc.syncStartTime.IsZero() {
 		result.SyncStarted = rc.syncStartTime.Format(time.RFC3339)
@@ -1799,6 +1822,26 @@ func AllKindListers() []kindLister {
 	return allKindListers
 }
 
+// InformerSyncedByKind is InformerSynced keyed by the Kind name ("Pod")
+// instead of the informer key ("pods") — for callers that enumerate the
+// kindLister table, which carries Kinds only.
+func (rc *ResourceCache) InformerSyncedByKind(kind string) (synced, known bool) {
+	if rc == nil {
+		return false, false
+	}
+	rc.informerMu.RLock()
+	defer rc.informerMu.RUnlock()
+	for i, status := range rc.informerStatuses {
+		if status.Kind == kind {
+			if i < len(rc.informerHasSynced) && rc.informerHasSynced[i] != nil {
+				return rc.informerHasSynced[i](), true
+			}
+			return status.Synced, true
+		}
+	}
+	return false, false
+}
+
 // Kind returns the resource kind name.
 func (kl kindLister) Kind() string { return kl.kind }
 
@@ -1853,8 +1896,18 @@ func (rc *ResourceCache) isReady(key string) bool {
 		return true
 	}
 	rc.deferredMu.RLock()
-	defer rc.deferredMu.RUnlock()
-	return rc.deferredSynced[key]
+	done := rc.deferredSynced[key]
+	rc.deferredMu.RUnlock()
+	if done {
+		return true
+	}
+	// The deferred tracker freezes its map when the deferred deadline fires;
+	// a kind whose LIST completes after that still has a fully-synced store.
+	// Ask the informer itself, so the lister and KindReadinessFor (which also
+	// reads live HasSynced) agree — otherwise a late-synced kind reports
+	// KindReady at the gate and then 403s off a nil lister forever.
+	synced, known := rc.InformerSynced(key)
+	return known && synced
 }
 
 // KindReadiness classifies a typed kind's serveability. It is meaningful at
@@ -1997,6 +2050,14 @@ func (rc *ResourceCache) IsDeferredPending(key string) bool {
 		return false
 	}
 	rc.deferredMu.RLock()
-	defer rc.deferredMu.RUnlock()
-	return !rc.deferredSynced[key]
+	done := rc.deferredSynced[key]
+	rc.deferredMu.RUnlock()
+	if done {
+		return false
+	}
+	// Same live fallback as isReady: the tracking goroutine marks the map a
+	// beat after HasSynced flips, and the two answers must agree — otherwise
+	// a just-synced kind serves from its lister while this still says 503.
+	synced, known := rc.InformerSynced(key)
+	return !(known && synced)
 }

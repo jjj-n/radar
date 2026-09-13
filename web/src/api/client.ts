@@ -238,6 +238,23 @@ export function isKindSyncPending(error: unknown): boolean {
   );
 }
 
+// isClusterConnecting matches the 503 the server returns while the whole
+// connection is still being established (no cache handle for this surface
+// yet) — like kind_sync_pending, a keep-polling signal, not an error.
+export function isClusterConnecting(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 503 &&
+    error.data?.error_code === "cluster_connecting"
+  );
+}
+
+// isStillLoadingError groups the two retryable "the cluster is warming up"
+// signals every resource surface should sit out in a loading state.
+export function isStillLoadingError(error: unknown): boolean {
+  return isKindSyncPending(error) || isClusterConnecting(error);
+}
+
 // isKindSyncFailed matches the terminal variant: the kind never synced within
 // the deadline for this connection. Retrying won't help — show the error.
 export function isKindSyncFailed(error: unknown): boolean {
@@ -2396,12 +2413,12 @@ export function useResource<T>(
     // Kind still completing its initial sync: stay in loading and poll until
     // it becomes readable instead of erroring out (deep links during startup).
     retry: (failureCount, error) => {
-      if (isKindSyncPending(error)) return true;
+      if (isStillLoadingError(error)) return true;
       if (isKindSyncFailed(error)) return false;
       return failureCount < 1; // matches the QueryClient default (retry: 1)
     },
     retryDelay: (failureCount, error) =>
-      isKindSyncPending(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
+      isStillLoadingError(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
   });
 
   // Extract resource and relationships from the response
@@ -2428,12 +2445,12 @@ export function useResourceWithRelationships<T>(
     // Deep-linked detail views can mount while the kind's informer is still
     // completing its initial sync: keep polling instead of erroring out.
     retry: (failureCount, error) => {
-      if (isKindSyncPending(error)) return true;
+      if (isStillLoadingError(error)) return true;
       if (isKindSyncFailed(error)) return false;
       return failureCount < 1; // matches the QueryClient default (retry: 1)
     },
     retryDelay: (failureCount, error) =>
-      isKindSyncPending(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
+      isStillLoadingError(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
   });
 }
 
@@ -2460,12 +2477,12 @@ export function useResources<T>(
     // deferred kind shortly after connect): keep polling instead of
     // surfacing an error.
     retry: (failureCount, error) => {
-      if (isKindSyncPending(error)) return true;
+      if (isStillLoadingError(error)) return true;
       if (isKindSyncFailed(error)) return false;
       return failureCount < 1; // matches the QueryClient default (retry: 1)
     },
     retryDelay: (failureCount, error) =>
-      isKindSyncPending(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
+      isStillLoadingError(error) ? 2000 : Math.min(1000 * 2 ** failureCount, 30000),
   });
 }
 

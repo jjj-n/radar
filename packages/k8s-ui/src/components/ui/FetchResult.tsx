@@ -121,6 +121,12 @@ function classify(error: unknown, notFoundMessage: string): Classified {
         if (errorCodeOf(error) === 'kind_sync_failed') {
           return { headline: "Couldn't load this view", detail: error.message, icon: AlertTriangle }
         }
+        // The cluster is healthy and still loading — the retry policies keep
+        // these surfaces polling, but a caller without one must not tell the
+        // user a connecting cluster is down.
+        if (errorCodeOf(error) === 'cluster_connecting' || errorCodeOf(error) === 'kind_sync_pending') {
+          return { headline: 'Cluster is still loading', detail: error.message, icon: AlertTriangle }
+        }
         return { headline: 'Cluster unavailable', detail: error.message, icon: ServerCrash }
       default:
         return { headline: "Couldn't load this view", detail: error.message, icon: AlertTriangle }

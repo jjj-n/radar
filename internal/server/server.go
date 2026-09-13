@@ -2679,7 +2679,7 @@ func (s *Server) requireConnectedOrSyncing(w http.ResponseWriter) bool {
 			return true
 		}
 	}
-	s.writeError(w, http.StatusServiceUnavailable, "Not connected to cluster")
+	s.writeNotConnected(w)
 	return false
 }
 
@@ -2748,9 +2748,15 @@ func (s *Server) preflightResourceGet(r *http.Request, kind, namespace, name, gr
 	default:
 		// Empty namespace and not a recognized cluster-scoped kind: an empty
 		// namespace means the target is cluster-scoped, but ClassifyKindScope
-		// couldn't identify it (an undiscovered CRD), so no SAR ran. Fail closed —
-		// serving such a resource ungated would let the caller read a cluster-
-		// scoped manifest they may lack `get` on (esp. via the Argo diff token).
+		// couldn't identify it (an undiscovered CRD), so no SAR ran. While
+		// discovery has not initialized yet (progressive startup, context
+		// switch), "unrecognized" means "not discovered yet", not "does not
+		// exist" — answer retryable rather than a permission-shaped terminal
+		// error for a deep link that resolves seconds later. Still fail
+		// closed either way: the resource is never served ungated.
+		if k8s.GetResourceDiscovery() == nil {
+			return http.StatusServiceUnavailable, fmt.Sprintf("%s is not discovered yet, please retry shortly", kind), false
+		}
 		return http.StatusForbidden, fmt.Sprintf("cannot verify access to %q (unrecognized cluster-scoped resource)", kind), false
 	}
 	return 0, "", true
@@ -5047,10 +5053,22 @@ func (s *Server) requireCloudRole(w http.ResponseWriter, r *http.Request, min au
 // Use at the start of handlers that require an active cluster connection.
 func (s *Server) requireConnected(w http.ResponseWriter) bool {
 	if !k8s.IsConnected() {
-		s.writeError(w, http.StatusServiceUnavailable, "Not connected to cluster")
+		s.writeNotConnected(w)
 		return false
 	}
 	return true
+}
+
+// writeNotConnected answers a request that needs the cluster while none is
+// available. During the connecting phase the 503 carries cluster_connecting so
+// the frontend keeps the surface in a loading state ("still loading") instead
+// of declaring a healthy, still-syncing cluster unavailable.
+func (s *Server) writeNotConnected(w http.ResponseWriter) {
+	if k8s.GetConnectionStatus().State == k8s.StateConnecting {
+		s.writeErrorCode(w, http.StatusServiceUnavailable, "cluster_connecting", "Cluster is still connecting, please retry shortly")
+		return
+	}
+	s.writeError(w, http.StatusServiceUnavailable, "Not connected to cluster")
 }
 
 // Auth handlers and helpers
