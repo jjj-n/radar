@@ -143,7 +143,10 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
       }
     },
     staleTime: 10000,
-    refetchInterval: 60000, // Safety net — SSE k8s_event drives near-real-time invalidation
+    // SSE invalidation isn't running while connecting, and mid-sync counts
+    // are what unlatch guarded kinds as their informers finish — poll fast
+    // during the shell, settle to the safety net once connected.
+    refetchInterval: connection.state === 'connecting' ? 3000 : 60000,
     // During the first seconds of the progressive shell the endpoint 503s
     // (cluster_connecting) until the mid-sync cache handle exists; keep the
     // query pending rather than parking it in error state, which would

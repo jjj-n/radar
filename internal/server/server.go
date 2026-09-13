@@ -2786,6 +2786,13 @@ func (s *Server) handleGetResource(w http.ResponseWriter, r *http.Request) {
 	// filtered list — gate the GET via the user's namespace access for the
 	// requested name, not via cluster-scoped SAR.
 	if status, msg, ok := s.preflightResourceGet(r, kind, namespace, name, group); !ok {
+		if status == http.StatusServiceUnavailable {
+			// Discovery hasn't seen the kind yet (progressive startup): carry
+			// the retryable code so detail hooks keep polling instead of
+			// reporting the cluster unavailable after one retry.
+			s.writeErrorCode(w, status, "cluster_connecting", msg)
+			return
+		}
 		s.writeError(w, status, msg)
 		return
 	}
