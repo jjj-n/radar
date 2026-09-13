@@ -6,7 +6,7 @@ import {
   NETWORK_POLICY_PEER_STYLES,
   type NetworkPolicyPeerType,
 } from './network-policy-peer-styles'
-import { effectivePolicyTypes } from '../../../utils/network-policy'
+import { effectivePolicyTypes, formatNetworkPolicyPort } from '../../../utils/network-policy'
 import { formatKubernetesLabelSelector } from '../resource-utils-calico'
 
 interface NetworkPolicyDiagramProps {
@@ -157,12 +157,7 @@ function extractPeers(peers: any[] | undefined): PeerInfo[] {
 
 function extractPorts(ports: any[] | undefined): string[] {
   if (!ports || ports.length === 0) return []
-  return ports.map((p: any) => {
-    const proto = p.protocol || 'TCP'
-    const port = p.port || '*'
-    const endPort = p.endPort
-    return endPort ? `${proto}/${port}-${endPort}` : `${proto}/${port}`
-  })
+  return ports.map(formatNetworkPolicyPort)
 }
 
 // matchExpressions select too; a selector made only of them is not "all".

@@ -18,10 +18,11 @@ describe('effectivePolicyTypes', () => {
     expect(effectivePolicyTypes({ egress: [] })).toEqual({ ingress: true, egress: false, explicit: false })
   })
 
-  it('names the effective types in declaration order', () => {
+  it('names the effective types as Ingress then Egress', () => {
     expect(effectivePolicyTypeNames({})).toEqual(['Ingress'])
     expect(effectivePolicyTypeNames({ egress: [{}] })).toEqual(['Ingress', 'Egress'])
     expect(effectivePolicyTypeNames({ policyTypes: ['Egress'] })).toEqual(['Egress'])
+    expect(effectivePolicyTypeNames({ policyTypes: ['Egress', 'Ingress'] })).toEqual(['Ingress', 'Egress'])
   })
 })
 
@@ -32,5 +33,10 @@ describe('formatNetworkPolicyPort', () => {
     expect(formatNetworkPolicyPort({ port: 9000, endPort: 9100 })).toBe('TCP/9000-9100')
     expect(formatNetworkPolicyPort({ port: 'metrics' })).toBe('TCP/metrics')
     expect(formatNetworkPolicyPort({ protocol: 'SCTP' })).toBe('SCTP/*')
+  })
+
+  it('never shows a range off a named port or off no port', () => {
+    expect(formatNetworkPolicyPort({ port: 'metrics', endPort: 9100 })).toBe('TCP/metrics')
+    expect(formatNetworkPolicyPort({ endPort: 9100 })).toBe('TCP/*')
   })
 })

@@ -52,5 +52,8 @@ export function formatNetworkPolicyPort(port: any): string {
   const proto = port?.protocol || 'TCP'
   const start = port?.port ?? '*'
   const end = port?.endPort
-  return end != null && start !== '*' ? `${proto}/${start}-${end}` : `${proto}/${start}`
+  // endPort only ever pairs with a numeric port; a range off a named port or
+  // off no port is not a range Kubernetes would accept, so it isn't shown as one.
+  const isRange = end != null && typeof start === 'number'
+  return isRange ? `${proto}/${start}-${end}` : `${proto}/${start}`
 }
