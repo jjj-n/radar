@@ -172,3 +172,10 @@ func (d *ResourceDiscovery) GetKindForGVR(gvr schema.GroupVersionResource) strin
 	}
 	return d.ResourceDiscovery.GetKindForGVR(gvr)
 }
+
+func (d *ResourceDiscovery) Snapshot() k8score.DiscoverySnapshot {
+	if d == nil {
+		return k8score.DiscoverySnapshot{}
+	}
+	return d.ResourceDiscovery.Snapshot()
+}

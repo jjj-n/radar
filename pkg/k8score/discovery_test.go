@@ -386,3 +386,85 @@ func TestNewResourceDiscoveryRejectsAPlainNilClient(t *testing.T) {
 		t.Fatal("expected an error for a nil discovery client")
 	}
 }
+
+func TestDiscoverySnapshotCoverageAndRecovery(t *testing.T) {
+	core := []*metav1.APIResourceList{{GroupVersion: "v1", APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Verbs: metav1.Verbs{"list"}}}}}
+	groupFailure := &discovery.ErrGroupDiscoveryFailed{Groups: map[schema.GroupVersion]error{{Group: "karpenter.sh", Version: "v1"}: errors.New("unavailable")}}
+	for _, tt := range []struct {
+		name                 string
+		resources            []*metav1.APIResourceList
+		err                  error
+		otherGroupIncomplete bool
+		attributed           bool
+	}{
+		{name: "attributed partial", resources: core, err: groupFailure, attributed: true},
+		{name: "unattributed partial", resources: core, err: errors.New("unknown error"), otherGroupIncomplete: true},
+		{name: "total failure", err: errors.New("unavailable"), otherGroupIncomplete: true},
+		{name: "empty response", otherGroupIncomplete: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &snapshotDiscovery{resources: core}
+			d, _ := NewResourceDiscovery(client)
+			before := d.Snapshot()
+			client.resources, client.err = tt.resources, tt.err
+			_ = d.Refresh()
+			partial := d.Snapshot()
+			if !partial.Incomplete() || !partial.GroupIncomplete("karpenter.sh") || partial.GroupIncomplete("monitoring.coreos.com") != tt.otherGroupIncomplete {
+				t.Fatalf("unexpected coverage: %#v", partial)
+			}
+			if partial.ConfirmsAbsence("NodePool", "karpenter.sh") || partial.ConfirmsAbsence("Pod", "") {
+				t.Fatal("incomplete or positively observed API called absent")
+			}
+			if d.GroupHadPartialDiscovery("karpenter.sh") != tt.attributed {
+				t.Fatal("fallback eligibility lost attribution")
+			}
+			if len(partial.Resources) != 1 || !before.ConfirmsAbsence("NodePool", "karpenter.sh") {
+				t.Fatal("browsing catalogue or original snapshot was lost")
+			}
+			d.AddAPIResource(APIResource{Group: "karpenter.sh", Version: "v1", Kind: "NodePool", Name: "nodepools"})
+			if !d.Snapshot().GroupIncomplete("karpenter.sh") {
+				t.Fatal("positive probe fabricated complete discovery")
+			}
+			client.resources, client.err = core, nil
+			if err := d.Refresh(); err != nil {
+				t.Fatal(err)
+			}
+			if d.Snapshot().Incomplete() || !d.Snapshot().ConfirmsAbsence("NodePool", "karpenter.sh") {
+				t.Fatal("successful refresh did not restore absence evidence")
+			}
+			if !partial.Incomplete() || partial.ConfirmsAbsence("NodePool", "karpenter.sh") {
+				t.Fatal("old partial catalogue borrowed recovered coverage")
+			}
+		})
+	}
+}
+
+func TestDiscoverySnapshotIsDetachedAndDeduplicated(t *testing.T) {
+	client := &snapshotDiscovery{resources: []*metav1.APIResourceList{
+		{GroupVersion: "sample.io/v1beta1", APIResources: []metav1.APIResource{{Kind: "Widget", Name: "widgets", Verbs: metav1.Verbs{"list"}}}},
+		{GroupVersion: "sample.io/v1", APIResources: []metav1.APIResource{{Kind: "Widget", Name: "widgets", Verbs: metav1.Verbs{"list", "watch"}}}},
+	}}
+	d, _ := NewResourceDiscovery(client)
+	snapshot := d.Snapshot()
+	if len(snapshot.Resources) != 1 || snapshot.Resources[0].Version != "v1" || snapshot.ConfirmsAbsence("widgets", "sample.io") || !snapshot.ConfirmsAbsence("Widget", "other.io") {
+		t.Fatalf("wrong resource identity: %#v", snapshot)
+	}
+	snapshot.Resources[0].Verbs[0] = "changed"
+	snapshot.Resources[0].Name = "changed"
+	fresh := d.Snapshot()
+	if fresh.Resources[0].Name != "widgets" || fresh.Resources[0].Verbs[0] != "list" {
+		t.Fatal("snapshot mutation changed discovery")
+	}
+}
+
+func TestDiscoverySnapshotUnknownDefaults(t *testing.T) {
+	for _, snapshot := range []DiscoverySnapshot{{}, (*ResourceDiscovery)(nil).Snapshot(), (&ResourceDiscovery{}).Snapshot()} {
+		if !snapshot.Incomplete() || !snapshot.GroupIncomplete("") || snapshot.ConfirmsAbsence("Pod", "") {
+			t.Fatal("uninitialized discovery certified absence")
+		}
+	}
+	d, _ := NewResourceDiscovery(&snapshotDiscovery{err: errors.New("initial failure")})
+	if !d.Snapshot().Incomplete() || d.Snapshot().ConfirmsAbsence("NodePool", "karpenter.sh") {
+		t.Fatal("initial failure certified absence")
+	}
+}

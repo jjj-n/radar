@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -52,10 +53,12 @@ func TestDiscoverUpgradePrometheusRuleDistinguishesPartialDiscoveryFromAbsentAPI
 	for _, tc := range []struct {
 		name             string
 		partial          bool
+		failed           bool
 		wantDiscoverable bool
 	}{
 		{name: "clean discovery without API", wantDiscoverable: true},
 		{name: "partial monitoring discovery", partial: true},
+		{name: "global discovery failure", failed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeDiscovery := fakeclientset.NewSimpleClientset().Discovery().(*fakediscovery.FakeDiscovery)
@@ -63,6 +66,11 @@ func TestDiscoverUpgradePrometheusRuleDistinguishesPartialDiscoveryFromAbsentAPI
 				GroupVersion: "v1",
 				APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
 			}}
+			if tc.failed {
+				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("discovery unavailable")
+				})
+			}
 			if tc.partial {
 				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
 					return true, nil, &discovery.ErrGroupDiscoveryFailed{Groups: map[schema.GroupVersion]error{

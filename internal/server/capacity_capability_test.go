@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -114,10 +115,12 @@ func TestLoadCapacityNodeClassesDistinguishesPartialDiscoveryFromAbsentAPI(t *te
 	for _, test := range []struct {
 		name       string
 		partial    bool
+		failed     bool
 		wantStatus capacityapi.CoverageStatus
 		wantReason string
 	}{
 		{name: "partial group discovery", partial: true, wantStatus: capacityapi.CoveragePartial, wantReason: "nodeclasses_discovery_partial"},
+		{name: "global discovery failure", failed: true, wantStatus: capacityapi.CoveragePartial, wantReason: "nodeclasses_discovery_partial"},
 		{name: "clean discovery without API", wantStatus: capacityapi.CoverageUnavailable, wantReason: "nodeclass_kinds_not_discovered"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -126,6 +129,11 @@ func TestLoadCapacityNodeClassesDistinguishesPartialDiscoveryFromAbsentAPI(t *te
 				GroupVersion: "v1",
 				APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
 			}}
+			if test.failed {
+				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("discovery unavailable")
+				})
+			}
 			if test.partial {
 				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
 					return true, nil, &discovery.ErrGroupDiscoveryFailed{Groups: map[schema.GroupVersion]error{
@@ -153,10 +161,12 @@ func TestLoadCapacityNodeClaimsDistinguishesPartialDiscoveryFromAbsentAPI(t *tes
 	for _, test := range []struct {
 		name       string
 		partial    bool
+		failed     bool
 		wantStatus capacityapi.CoverageStatus
 		wantReason string
 	}{
 		{name: "partial Karpenter discovery", partial: true, wantStatus: capacityapi.CoveragePartial, wantReason: "nodeclaims_discovery_partial"},
+		{name: "global discovery failure", failed: true, wantStatus: capacityapi.CoveragePartial, wantReason: "nodeclaims_discovery_partial"},
 		{name: "clean discovery without API", wantStatus: capacityapi.CoverageUnavailable, wantReason: "nodeclaims_not_discovered"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -165,6 +175,11 @@ func TestLoadCapacityNodeClaimsDistinguishesPartialDiscoveryFromAbsentAPI(t *tes
 				GroupVersion: "v1",
 				APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
 			}}
+			if test.failed {
+				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("discovery unavailable")
+				})
+			}
 			if test.partial {
 				fakeDiscovery.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
 					return true, nil, &discovery.ErrGroupDiscoveryFailed{Groups: map[schema.GroupVersion]error{

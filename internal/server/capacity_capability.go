@@ -31,7 +31,7 @@ func (s *Server) karpenterCapability(r *http.Request) k8s.IntegrationCapability 
 	}
 	gvr, found := discovery.GetGVRWithGroup(karpenterNodePoolKind, karpenterGroup)
 	if !found {
-		if discovery.GroupHadPartialDiscovery(karpenterGroup) {
+		if !discovery.Snapshot().ConfirmsAbsence(karpenterNodePoolKind, karpenterGroup) {
 			return k8s.IntegrationCapability{State: capacityapi.IntegrationSyncing, ReasonCode: "karpenter_discovery_partial"}
 		}
 		return k8s.IntegrationCapability{State: capacityapi.IntegrationNotDetected}

@@ -799,7 +799,7 @@ func (p *CacheProvider) karpenterResourceDiscovery(group, kind string) karpenter
 	}
 	apiResource, ok := p.discovery.GetResourceWithGroup(kind, group)
 	if !ok {
-		if p.discovery.GroupHadPartialDiscovery(group) {
+		if !p.discovery.Snapshot().ConfirmsAbsence(kind, group) {
 			return karpenterCoverageUnknown
 		}
 		return karpenterCoverageNotInstalled

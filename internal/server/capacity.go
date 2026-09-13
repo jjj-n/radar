@@ -550,7 +550,7 @@ func (s *Server) loadCapacityNodeClaims(r *http.Request, discovery *k8s.Resource
 	}
 	gvr, found := discovery.GetGVRWithGroup(karpenter.NodeClaimKind, karpenter.Group)
 	if !found {
-		if discovery.GroupHadPartialDiscovery(karpenter.Group) {
+		if !discovery.Snapshot().ConfirmsAbsence(karpenter.NodeClaimKind, karpenter.Group) {
 			coverage := capacityapi.NewSourceCoverage(capacityapi.CoveragePartial, capacityapi.CoverageScopeCluster)
 			coverage.ReasonCode = "nodeclaims_discovery_partial"
 			coverage.ImpactFields = []string{"claimCount", "inFlightCapacity", "claims"}
@@ -608,7 +608,7 @@ func (s *Server) loadCapacityNodeClasses(r *http.Request, discovery *k8s.Resourc
 		apiResource, found := discovery.GetResourceWithGroup(ref.kind, ref.group)
 		if !found {
 			unavailable++
-			if discovery.GroupHadPartialDiscovery(ref.group) {
+			if !discovery.Snapshot().ConfirmsAbsence(ref.kind, ref.group) {
 				partialDiscovery++
 				continue
 			}

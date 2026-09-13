@@ -2,6 +2,8 @@ package k8s
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -493,4 +495,42 @@ func fakeDiscoveryWithPartialGroup(t *testing.T, group, version string) *fakedis
 		}
 	})
 	return fakeDisc
+}
+
+func TestRegisterSupportedCRDFallbacksDoesNotProbeUnattributedFailure(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		t.Run(fmt.Sprint(failed), func(t *testing.T) {
+			t.Cleanup(ResetTestDynamicState)
+			dyn := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+			fakeDisc := fakeclientset.NewSimpleClientset().Discovery().(*fakediscovery.FakeDiscovery)
+			if failed {
+				fakeDisc.PrependReactor("get", "resource", func(k8stesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("discovery unavailable")
+				})
+			}
+			core, err := k8score.NewResourceDiscovery(fakeDisc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resourceDiscovery = &ResourceDiscovery{ResourceDiscovery: core}
+			clientMu.Lock()
+			dynamicClient = dyn
+			clientMu.Unlock()
+			RegisterSupportedCRDFallbacks()
+			if len(dyn.Actions()) != 0 {
+				t.Fatalf("unattributed discovery triggered probes: %v", dyn.Actions())
+			}
+			if !core.Snapshot().Incomplete() {
+				t.Fatal("failure or empty discovery considered complete")
+			}
+		})
+	}
+}
+
+func TestDiscoverySnapshotNilWrapper(t *testing.T) {
+	for _, d := range []*ResourceDiscovery{nil, {}} {
+		if d.Snapshot().ConfirmsAbsence("NodePool", "karpenter.sh") {
+			t.Fatal("nil wrapper certified absence")
+		}
+	}
 }

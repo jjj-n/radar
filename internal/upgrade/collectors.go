@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"context"
+	"log"
 	"slices"
 	"sort"
 	"strings"
@@ -36,10 +37,11 @@ func collectUpgradeSourceObjects(ctx context.Context, namespaces []string) ([]me
 	if client == nil || discovery == nil {
 		return nil, []string{"source-object discovery"}
 	}
-	apiResources, err := discovery.GetAPIResources()
-	if err != nil {
-		return nil, []string{"source-object discovery"}
+	if err := discovery.RefreshIfStale(); err != nil {
+		log.Printf("[upgrade-impact] failed to refresh API discovery: %v", err)
 	}
+	snapshot := discovery.Snapshot()
+	apiResources := snapshot.Resources
 	resources := make([]upgradeSourceResource, 0, len(apiResources))
 	for _, resource := range apiResources {
 		if resource.IsCRD || upgradeSourceExcludedKinds[resource.Kind] || !slices.Contains(resource.Verbs, "list") || !upgradereadiness.IsUpgradeSourceObjectCandidate(resource.Kind, resource.Group) {
@@ -54,7 +56,7 @@ func collectUpgradeSourceObjects(ctx context.Context, namespaces []string) ([]me
 		return nil, []string{"source-object discovery"}
 	}
 	objects, unavailable := collectUpgradeSourceObjectsWithClient(ctx, client, namespaces, resources)
-	if discovery.HasPartialDiscovery() && !slices.Contains(unavailable, "source-object discovery") {
+	if snapshot.Incomplete() && !slices.Contains(unavailable, "source-object discovery") {
 		unavailable = append(unavailable, "source-object discovery")
 		sort.Strings(unavailable)
 	}

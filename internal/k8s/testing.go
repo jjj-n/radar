@@ -8,6 +8,8 @@ import (
 	"github.com/skyhook-io/radar/pkg/k8score"
 	"github.com/skyhook-io/radar/pkg/policyreports"
 	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
@@ -189,7 +191,11 @@ func InitTestDynamicResourceCache(dynClient dynamic.Interface, resources []APIRe
 	// Bootstrap discovery from a fake clientset so NewResourceDiscovery has a
 	// non-nil discovery client; AddAPIResource then registers the test-only
 	// GVRs (e.g. serving.knative.dev/Service) the test depends on.
-	fakeDisc := fakeclientset.NewSimpleClientset().Discovery()
+	fakeDisc := fakeclientset.NewSimpleClientset().Discovery().(*fakediscovery.FakeDiscovery)
+	fakeDisc.Resources = []*metav1.APIResourceList{{
+		GroupVersion: "v1",
+		APIResources: []metav1.APIResource{{Name: "pods", Kind: "Pod", Namespaced: true}},
+	}}
 	core, err := k8score.NewResourceDiscovery(fakeDisc)
 	if err != nil {
 		clientMu.Lock()

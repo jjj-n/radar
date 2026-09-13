@@ -3,8 +3,10 @@ package k8score
 import (
 	"fmt"
 	"log"
+	"maps"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -193,9 +195,11 @@ func (d *ResourceDiscovery) refresh() error {
 			break
 		}
 	}
-	if err != nil && !hasResourceData {
+	if !hasResourceData {
 		d.mu.Lock()
 		d.lastRefresh = time.Now()
+		d.partial = true
+		d.failedGroup = nil
 		d.mu.Unlock()
 		return err
 	}
@@ -205,7 +209,7 @@ func (d *ResourceDiscovery) refresh() error {
 			failedGroups[gv.Group] = true
 		}
 	}
-	partial := discovery.IsGroupDiscoveryFailedError(err) || len(failedGroups) > 0
+	partial := err != nil
 	log.Printf("API resource discovery took %v", time.Since(start))
 
 	d.mu.Lock()
@@ -253,8 +257,7 @@ func (d *ResourceDiscovery) refresh() error {
 	return nil
 }
 
-// HasPartialDiscovery reports whether the last refresh missed one or more
-// group/versions while still returning partial API resource data.
+// HasPartialDiscovery reports whether the last refresh left discovery incomplete.
 func (d *ResourceDiscovery) HasPartialDiscovery() bool {
 	if d == nil {
 		return false
@@ -273,6 +276,49 @@ func (d *ResourceDiscovery) GroupHadPartialDiscovery(group string) bool {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 	return d.failedGroup[group]
+}
+
+// DiscoverySnapshot pairs a detached catalogue with the coverage that produced it.
+// Its zero value is incomplete and cannot establish resource absence.
+type DiscoverySnapshot struct {
+	Resources    []APIResource
+	complete     bool
+	failedGroups map[string]bool
+}
+
+func (s DiscoverySnapshot) Incomplete() bool {
+	return !s.complete
+}
+
+func (s DiscoverySnapshot) GroupIncomplete(group string) bool {
+	return s.failedGroups[group] || (!s.complete && len(s.failedGroups) == 0)
+}
+
+func (s DiscoverySnapshot) ConfirmsAbsence(kindOrName, group string) bool {
+	if s.GroupIncomplete(group) {
+		return false
+	}
+	for _, resource := range s.Resources {
+		if resource.Group == group && (strings.EqualFold(resource.Kind, kindOrName) || strings.EqualFold(resource.Name, kindOrName)) {
+			return false
+		}
+	}
+	return true
+}
+
+// Snapshot does not refresh discovery. Call RefreshIfStale first when fresh
+// discovery is needed; all absence decisions must use this same snapshot.
+func (d *ResourceDiscovery) Snapshot() DiscoverySnapshot {
+	if d == nil {
+		return DiscoverySnapshot{}
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return DiscoverySnapshot{
+		Resources:    d.apiResourcesLocked(),
+		complete:     !d.partial && !d.lastRefresh.IsZero(),
+		failedGroups: maps.Clone(d.failedGroup),
+	}
 }
 
 // AddAPIResource registers a resource that was proven accessible without
@@ -439,6 +485,10 @@ func (d *ResourceDiscovery) GetAPIResources() ([]APIResource, error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
+	return d.apiResourcesLocked(), nil
+}
+
+func (d *ResourceDiscovery) apiResourcesLocked() []APIResource {
 	type entry struct {
 		index   int
 		version string
@@ -457,7 +507,10 @@ func (d *ResourceDiscovery) GetAPIResources() ([]APIResource, error) {
 		}
 	}
 
-	return result, nil
+	for i := range result {
+		result[i].Verbs = slices.Clone(result[i].Verbs)
+	}
+	return result
 }
 
 // GetGVR returns the GroupVersionResource for a given kind or plural name.

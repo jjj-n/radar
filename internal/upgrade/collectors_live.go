@@ -233,7 +233,7 @@ func discoverUpgradePrometheusRule(discovery *k8s.ResourceDiscovery) (schema.Gro
 	if ok {
 		return gvr, true, true
 	}
-	return schema.GroupVersionResource{}, false, !discovery.GroupHadPartialDiscovery("monitoring.coreos.com")
+	return schema.GroupVersionResource{}, false, discovery.Snapshot().ConfirmsAbsence("PrometheusRule", "monitoring.coreos.com")
 }
 
 type upgradeResourceLister interface {
