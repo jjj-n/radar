@@ -128,6 +128,60 @@ func TestDecodeOptionalApplyValuesRequest(t *testing.T) {
 	}
 }
 
+// TestApplyValuesRejectsVersionAndRepository pins the contract that the
+// apply endpoint refuses a chart-version change instead of silently
+// dropping it. Preview accepts Version/Repository (it renders against the
+// target chart), so a caller could reasonably send the same body to apply
+// and believe the version was applied — before this guard, apply returned
+// success while upgrading the current chart with only the values changed.
+// No Helm client is needed: the rejection fires before any helm work.
+func TestApplyValuesRejectsVersionAndRepository(t *testing.T) {
+	h := NewHandlers(nil)
+
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"version set", `{"values":{"a":1},"version":"1.1.0"}`},
+		{"repository set", `{"values":{"a":1},"repository":"my-repo"}`},
+		{"both set", `{"values":{"a":1},"version":"1.1.0","repository":"my-repo"}`},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPut, "/test", strings.NewReader(tc.body))
+			rec := httptest.NewRecorder()
+
+			h.handleApplyValues(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (version/repository must be rejected, not dropped)", rec.Code)
+			}
+			var resp map[string]string
+			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+				t.Fatalf("decode body: %v (body=%s)", err, rec.Body.String())
+			}
+			if !strings.Contains(resp["error"], "upgrade endpoint") {
+				t.Errorf("error = %q, want it to point at the upgrade endpoint", resp["error"])
+			}
+		})
+	}
+
+	// Control: a values-only body must get past the rejection. Without a
+	// cluster it fails later (capability check), but never with the 400
+	// this test guards.
+	t.Run("values only passes the guard", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/test", strings.NewReader(`{"values":{"a":1}}`))
+		rec := httptest.NewRecorder()
+
+		h.handleApplyValues(rec, req)
+
+		if rec.Code == http.StatusBadRequest {
+			t.Fatalf("status = 400 (%s), want values-only apply to pass the version guard", rec.Body.String())
+		}
+	})
+}
+
 // TestSensitiveHelmHandlers_GateOnViewer asserts that every Helm
 // handler we believe is gated actually 403s a Cloud viewer with
 // error_code=cloud_role_insufficient. The unit test above

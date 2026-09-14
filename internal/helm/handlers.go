@@ -854,6 +854,20 @@ func (h *Handlers) handleApplyValues(w http.ResponseWriter, r *http.Request) {
 	if !requireCloudRole(w, r, auth.RoleMember, "apply Helm release values") {
 		return
 	}
+
+	var req ApplyValuesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
+		return
+	}
+	// Apply always targets the release's current chart. Rejecting these
+	// fields beats silently dropping them: a caller who previewed against a
+	// target version would otherwise believe the version was applied.
+	if req.Version != "" || req.Repository != "" {
+		writeError(w, http.StatusBadRequest, "version and repository are not supported when applying values; use the upgrade endpoint to change the chart version")
+		return
+	}
+
 	if !requireHelmWrite(w, r) {
 		return
 	}
@@ -866,12 +880,6 @@ func (h *Handlers) handleApplyValues(w http.ResponseWriter, r *http.Request) {
 
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
-
-	var req ApplyValuesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
-		return
-	}
 
 	auth.AuditLog(r, namespace, name)
 	var applyErr error
