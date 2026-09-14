@@ -699,6 +699,7 @@ export function SettingsDialog({
                 envError={configData?.argoCdEnvError}
                 cliSession={configData?.argoCdCliSession}
                 anonymous={argoSectionStatus?.connected && argoSectionStatus.anonymous}
+                connectedAddress={argoSectionStatus?.connected && !argoSectionStatus.anonymous ? argoSectionStatus.address : undefined}
                 active={section === 'argocd'}
                 statusReason={
                   argoSectionStatus?.configured && !argoSectionStatus.connected
@@ -2137,6 +2138,7 @@ function ArgoCDConfigField({
   cliSession,
   statusReason,
   anonymous,
+  connectedAddress,
   active,
   onChangeUrl,
   onChangeInsecureTls,
@@ -2150,6 +2152,7 @@ function ArgoCDConfigField({
   cliSession?: { server: string; user: string; insecure?: boolean }
   statusReason?: string
   anonymous?: boolean
+  connectedAddress?: string
   active?: boolean
   onChangeUrl: (value: string) => void
   onChangeInsecureTls: (value: boolean) => void
@@ -2166,6 +2169,7 @@ function ArgoCDConfigField({
       cliSession={cliSession}
       statusReason={statusReason}
       anonymous={anonymous}
+      connectedAddress={connectedAddress}
       active={active}
       onChangeUrl={onChangeUrl}
       onChangeInsecureTls={onChangeInsecureTls}
@@ -2261,6 +2265,7 @@ function ArgoCDEditableField({
   cliSession,
   statusReason,
   anonymous,
+  connectedAddress,
   active,
   onChangeUrl,
   onChangeInsecureTls,
@@ -2272,6 +2277,7 @@ function ArgoCDEditableField({
   cliSession?: { server: string; user: string; insecure?: boolean }
   statusReason?: string
   anonymous?: boolean
+  connectedAddress?: string
   active?: boolean
   onChangeUrl: (value: string) => void
   onChangeInsecureTls: (value: boolean) => void
@@ -2384,11 +2390,17 @@ function ArgoCDEditableField({
         annotation-based drift that can miss fields, and to its own read of each resource.
       </p>
 
-      {anonymous && state.status !== 'connected' && (
+      {state.status !== 'connected' && (anonymous || connectedAddress) && (
         <p className="mb-3 flex items-center gap-1.5 text-xs text-theme-text-secondary">
           <Check className="w-3.5 h-3.5 shrink-0 text-green-600 dark:text-green-400/80" />
-          Your Argo CD server lets Radar read without a token, so it's already connected. Add a token only if
-          anonymous access gets restricted, or a URL to point Radar at a specific server.
+          {anonymous ? (
+            <>
+              Your Argo CD server lets Radar read without a token, so it's already connected. Add a token only
+              if anonymous access gets restricted, or a URL to point Radar at a specific server.
+            </>
+          ) : (
+            <>Connected to Argo CD at {connectedAddress}.</>
+          )}
         </p>
       )}
 
