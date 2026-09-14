@@ -5213,7 +5213,9 @@ export function describeDrainResult(data: {
     parts.push(`Failed ${errors.length}: ${listWithOverflow(errors)}`);
   }
   parts.push(
-    "Evictions were accepted; pods may still be terminating. The node remains cordoned.",
+    evicted > 0
+      ? "Evictions were accepted; those pods may still be terminating. The node remains cordoned."
+      : "The node remains cordoned.",
   );
   const detail = parts.join("\n");
   if (errors.length > 0) {
