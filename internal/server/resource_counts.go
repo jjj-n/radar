@@ -149,7 +149,11 @@ func (s *Server) handleResourceCounts(w http.ResponseWriter, r *http.Request) {
 		// it on "count unavailable" forever).
 		switch cache.KindReadinessForKindName(kl.Kind()) {
 		case k8score.KindPending:
+			// Reasoned, so the client can render loading instead of a count
+			//-verification failure — deferred kinds sync after connect, so
+			// this state is not confined to the connecting phase.
 			markUnavailable(kl.CountKey())
+			reasons[kl.CountKey()] = "kind_sync_pending"
 			continue
 		case k8score.KindFailed:
 			markUnavailable(kl.CountKey())

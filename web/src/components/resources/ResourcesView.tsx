@@ -222,11 +222,14 @@ export function ResourcesView({ namespaces, selectedResource, onResourceClick, o
   // unblock: the server serves no rows for a failed kind.
   const selectedCountFailedSync =
     selectedCountUnavailable && countsData?.reasons?.[selectedCountKey] === 'kind_sync_failed'
-  // Mid-sync, a guarded kind whose informer hasn't finished reports
-  // "unavailable" — that means "count not known yet", so keep the loading
-  // state; once connected, unavailable is a real verification failure and
-  // blocks the view as before.
-  const selectedCountPendingSync = syncShellActive && selectedCountUnavailable && !selectedCountFailedSync
+  // A guarded kind whose informer hasn't finished reports unavailable with a
+  // kind_sync_pending reason — "count not known YET", so keep the loading
+  // state. Keyed on the reason, not on connection.state: deferred kinds sync
+  // after connect. Reasonless unavailable stays a real verification failure
+  // and blocks the view as before.
+  const selectedCountPendingSync =
+    (selectedCountUnavailable && countsData?.reasons?.[selectedCountKey] === 'kind_sync_pending') ||
+    (syncShellActive && selectedCountUnavailable && !selectedCountFailedSync)
   const waitingForGuardCount = isSelectedKindGuarded &&
     ((!countsData && (!countsIsError || syncShellActive)) || selectedCountPendingSync)
   const largeListBlocked = isSelectedKindGuarded && countsData != null && !selectedCountPendingSync && !selectedCountFailedSync &&
