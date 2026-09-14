@@ -128,17 +128,13 @@ func TestDecodeOptionalApplyValuesRequest(t *testing.T) {
 	}
 }
 
-// TestApplyValuesRejectsVersionAndRepository pins the contract that the
-// apply endpoint refuses a chart-version change instead of silently
-// dropping it. Preview accepts Version/Repository (it renders against the
-// target chart), so a caller could reasonably send the same body to apply
-// and believe the version was applied — before this guard, apply returned
-// success while upgrading the current chart with only the values changed.
-// No Helm client is needed: the rejection fires before any helm work.
-func TestApplyValuesRejectsVersionAndRepository(t *testing.T) {
-	h := NewHandlers(nil)
-
-	cases := []struct {
+// TestDecodeApplyValuesRequest pins the apply contract: the endpoint refuses
+// a chart-version change instead of silently dropping it. Preview accepts
+// Version/Repository and renders against the target chart, so the same body
+// sent to apply must fail loudly; apply always targets the release's current
+// chart, and version changes belong to the upgrade endpoints.
+func TestDecodeApplyValuesRequest(t *testing.T) {
+	rejected := []struct {
 		name string
 		body string
 	}{
@@ -147,37 +143,35 @@ func TestApplyValuesRejectsVersionAndRepository(t *testing.T) {
 		{"both set", `{"values":{"a":1},"version":"1.1.0","repository":"my-repo"}`},
 	}
 
-	for _, tc := range cases {
+	for _, tc := range rejected {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPut, "/test", strings.NewReader(tc.body))
-			rec := httptest.NewRecorder()
-
-			h.handleApplyValues(rec, req)
-
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("status = %d, want 400 (version/repository must be rejected, not dropped)", rec.Code)
+			_, err := decodeApplyValuesRequest(strings.NewReader(tc.body))
+			if err == nil {
+				t.Fatal("expected rejection (version/repository must be refused, not dropped)")
 			}
-			var resp map[string]string
-			if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-				t.Fatalf("decode body: %v (body=%s)", err, rec.Body.String())
-			}
-			if !strings.Contains(resp["error"], "upgrade endpoint") {
-				t.Errorf("error = %q, want it to point at the upgrade endpoint", resp["error"])
+			if !strings.Contains(err.Error(), "upgrade endpoint") {
+				t.Errorf("error = %q, want it to point at the upgrade endpoint", err.Error())
 			}
 		})
 	}
 
-	// Control: a values-only body must get past the rejection. Without a
-	// cluster it fails later (capability check), but never with the 400
-	// this test guards.
-	t.Run("values only passes the guard", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPut, "/test", strings.NewReader(`{"values":{"a":1}}`))
-		rec := httptest.NewRecorder()
+	t.Run("values only accepted", func(t *testing.T) {
+		req, err := decodeApplyValuesRequest(strings.NewReader(`{"values":{"a":1}}`))
+		if err != nil {
+			t.Fatalf("decodeApplyValuesRequest returned error: %v", err)
+		}
+		if !reflect.DeepEqual(req.Values, map[string]any{"a": float64(1)}) {
+			t.Fatalf("values = %#v, want the decoded map", req.Values)
+		}
+	})
 
-		h.handleApplyValues(rec, req)
-
-		if rec.Code == http.StatusBadRequest {
-			t.Fatalf("status = 400 (%s), want values-only apply to pass the version guard", rec.Body.String())
+	t.Run("malformed body rejected", func(t *testing.T) {
+		_, err := decodeApplyValuesRequest(strings.NewReader(`{"values":`))
+		if err == nil {
+			t.Fatal("expected error for malformed JSON")
+		}
+		if !strings.Contains(err.Error(), "invalid request body") {
+			t.Errorf("error = %q, want an invalid-request-body message", err.Error())
 		}
 	})
 }

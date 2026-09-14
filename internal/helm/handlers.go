@@ -2,6 +2,8 @@ package helm
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -31,6 +33,23 @@ func userCreds(r *http.Request) (string, []string) {
 		return user.Username, user.Groups
 	}
 	return "", nil
+}
+
+// decodeApplyValuesRequest parses an apply-values body. Apply always targets
+// the release's current chart; changing the chart version goes through the
+// upgrade endpoints. Preview shares the request type and accepts
+// Version/Repository, so a chart-change request here fails loudly instead of
+// applying against the current chart while the caller believes the version
+// changed.
+func decodeApplyValuesRequest(body io.Reader) (ApplyValuesRequest, error) {
+	var req ApplyValuesRequest
+	if err := json.NewDecoder(body).Decode(&req); err != nil {
+		return req, fmt.Errorf("invalid request body: %s", err.Error())
+	}
+	if req.Version != "" || req.Repository != "" {
+		return req, errors.New("version and repository are not supported when applying values; use the upgrade endpoint to change the chart version")
+	}
+	return req, nil
 }
 
 func decodeOptionalApplyValuesRequest(body io.Reader) (map[string]any, error) {
@@ -854,20 +873,6 @@ func (h *Handlers) handleApplyValues(w http.ResponseWriter, r *http.Request) {
 	if !requireCloudRole(w, r, auth.RoleMember, "apply Helm release values") {
 		return
 	}
-
-	var req ApplyValuesRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
-		return
-	}
-	// Apply always targets the release's current chart. Rejecting these
-	// fields beats silently dropping them: a caller who previewed against a
-	// target version would otherwise believe the version was applied.
-	if req.Version != "" || req.Repository != "" {
-		writeError(w, http.StatusBadRequest, "version and repository are not supported when applying values; use the upgrade endpoint to change the chart version")
-		return
-	}
-
 	if !requireHelmWrite(w, r) {
 		return
 	}
@@ -880,6 +885,12 @@ func (h *Handlers) handleApplyValues(w http.ResponseWriter, r *http.Request) {
 
 	namespace := chi.URLParam(r, "namespace")
 	name := chi.URLParam(r, "name")
+
+	req, err := decodeApplyValuesRequest(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	auth.AuditLog(r, namespace, name)
 	var applyErr error
