@@ -440,7 +440,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 	if !pf.OK() {
 		return &cloudInstallBlocked{
 			Reason:   "preflight",
-			Message:  "Your current Kubernetes identity cannot perform the exact planned Radar operation. Ask a platform operator to connect this cluster instead.",
+			Message:  "Radar dry-ran the exact planned operation against this cluster and part of it was refused or could not be verified. Ask a platform operator to connect this cluster instead.",
 			Blocking: pf.Blocking,
 		}, nil
 	}

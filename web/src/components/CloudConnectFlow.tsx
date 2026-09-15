@@ -85,7 +85,7 @@ function BlockedView({
     blocked.reason === 'gitops'
       ? 'This install is managed by GitOps'
       : blocked.reason === 'preflight'
-        ? 'Your Kubernetes identity can’t install this'
+        ? 'The planned install didn’t pass its dry run'
         : 'This cluster can’t be connected from here'
   return (
     <div className="px-8 pt-6 pb-5">

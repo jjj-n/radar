@@ -83,8 +83,8 @@ func printCloudPermissionFailure(
 	prepared *cloudinstall.PreparedProvision,
 	clusterName string,
 ) {
-	fmt.Fprintf(w, "%s Your current Kubernetes identity cannot perform the exact planned Radar operation.\n", cliui.New(w).Marker(cliui.Failure))
-	fmt.Fprintln(w, "Blocked while trying to:")
+	fmt.Fprintf(w, "%s Radar dry-ran the exact planned operation against this cluster and part of it was refused or could not be verified.\n", cliui.New(w).Marker(cliui.Failure))
+	fmt.Fprintln(w, "Blocked on:")
 	for _, detail := range pf.Blocking {
 		fmt.Fprintf(w, "  • %s\n", detail)
 	}
