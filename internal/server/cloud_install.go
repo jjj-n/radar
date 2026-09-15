@@ -179,9 +179,26 @@ type cloudInstallPlanSummary struct {
 // cloudInstallBlocked explains why the driver lane cannot serve this cluster.
 // It is returned by prepare without retaining a flow.
 type cloudInstallBlocked struct {
-	Reason   string   `json:"reason"` // gitops | preflight | unsupported
+	Reason string `json:"reason"` // gitops | preflight | unsupported
+	// Cause narrows a preflight refusal to what would unblock it:
+	// permissions | cluster | verification (cloudinstall.BlockCause).
+	Cause    string   `json:"cause,omitempty"`
 	Message  string   `json:"message"`
 	Blocking []string `json:"blocking,omitempty"`
+}
+
+// preflightBlockedMessage is the body under the blocked card's headline. The
+// blocking lines render right below it, so it says what kind of stop this is
+// and who can clear it, not what the lines already say.
+func preflightBlockedMessage(cause cloudinstall.BlockCause) string {
+	switch cause {
+	case cloudinstall.BlockCausePermissions:
+		return "The identity in your kubeconfig can't perform part of this install. Ask a platform operator to connect this cluster; they'll have the permissions."
+	case cloudinstall.BlockCauseVerification:
+		return "Radar checks the exact changes before it makes them, and couldn't prove them on this cluster. Connect this cluster through the browser wizard instead."
+	default:
+		return "Radar checked this install against the cluster before changing anything, and the cluster refused part of it. A platform operator can clear what's in the way and connect this cluster."
+	}
 }
 
 type cloudInstallFlow struct {
@@ -440,7 +457,8 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 	if !pf.OK() {
 		return &cloudInstallBlocked{
 			Reason:   "preflight",
-			Message:  "Radar dry-ran the exact planned operation against this cluster and part of it was refused or could not be verified. Ask a platform operator to connect this cluster instead.",
+			Cause:    string(pf.Cause()),
+			Message:  preflightBlockedMessage(pf.Cause()),
 			Blocking: pf.Blocking,
 		}, nil
 	}

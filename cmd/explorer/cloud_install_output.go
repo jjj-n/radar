@@ -83,12 +83,28 @@ func printCloudPermissionFailure(
 	prepared *cloudinstall.PreparedProvision,
 	clusterName string,
 ) {
-	fmt.Fprintf(w, "%s Radar dry-ran the exact planned operation against this cluster and part of it was refused or could not be verified.\n", cliui.New(w).Marker(cliui.Failure))
+	marker := cliui.New(w).Marker(cliui.Failure)
+	switch pf.Cause() {
+	case cloudinstall.BlockCausePermissions:
+		fmt.Fprintf(w, "%s The identity in your kubeconfig is missing permissions this install needs.\n", marker)
+	case cloudinstall.BlockCauseVerification:
+		fmt.Fprintf(w, "%s Radar could not verify the exact changes this install would make, so it will not make them blind.\n", marker)
+	default:
+		fmt.Fprintf(w, "%s The cluster refused part of the planned install.\n", marker)
+	}
 	fmt.Fprintln(w, "Blocked on:")
 	for _, detail := range pf.Blocking {
 		fmt.Fprintf(w, "  • %s\n", detail)
 	}
-	fmt.Fprintln(w, "\nRadar's connected mode provisions Kubernetes impersonation RBAC, so a sufficiently privileged platform operator must run this step.")
+	fmt.Fprintln(w)
+	switch pf.Cause() {
+	case cloudinstall.BlockCausePermissions:
+		fmt.Fprintln(w, "Radar's connected mode provisions Kubernetes impersonation RBAC, so a platform operator with those permissions must run this step.")
+	case cloudinstall.BlockCauseVerification:
+		fmt.Fprintln(w, "A platform operator can review the rendered chart and run this step by hand.")
+	default:
+		fmt.Fprintln(w, "A platform operator needs to clear what the cluster refused before this step can run.")
+	}
 	fmt.Fprintf(w, "Ask them to run `radar cloud install` against this Kubernetes cluster (your context %q; theirs may be named differently).\n", contextName)
 	fmt.Fprintf(w, "Preserve Hub %q, namespace %q, Helm release %q, Radar cluster name %q, and chart target %q.\n",
 		hubURL, prepared.Namespace(), prepared.ReleaseName(), clusterName, prepared.ChartVersion())

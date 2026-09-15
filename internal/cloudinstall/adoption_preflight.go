@@ -90,7 +90,7 @@ func AdoptionPreflight(
 	current, err := parseAdoptionManifest(opts.CurrentManifest, opts.Namespace, mapper)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
-			result.Blocking = append(result.Blocking, fmt.Sprintf("map current Helm manifest to this cluster: %v", err))
+			result.blockRefused(fmt.Sprintf("map current Helm manifest to this cluster: %v", err))
 			return result, nil
 		}
 		return result, fmt.Errorf("adoption preflight: parse current Helm manifest: %w", err)
@@ -98,7 +98,7 @@ func AdoptionPreflight(
 	target, err := parseAdoptionManifest(opts.TargetManifest, opts.Namespace, mapper)
 	if err != nil {
 		if meta.IsNoMatchError(err) {
-			result.Blocking = append(result.Blocking, fmt.Sprintf("map target Helm manifest to this cluster: %v", err))
+			result.blockRefused(fmt.Sprintf("map target Helm manifest to this cluster: %v", err))
 			return result, nil
 		}
 		return result, fmt.Errorf("adoption preflight: parse target Helm manifest: %w", err)
@@ -136,7 +136,7 @@ func recordHiddenSecretBlocker(manifest, mutationKind string, result *PreflightR
 	if !strings.Contains(manifest, "# HIDDEN: The Secret output has been suppressed") {
 		return false
 	}
-	result.Blocking = append(result.Blocking,
+	result.blockUnverifiable(
 		fmt.Sprintf("inspect rendered chart Secrets: the prepared target hid at least one Secret, so Radar cannot prove the exact %s mutations", mutationKind))
 	return true
 }
@@ -273,7 +273,7 @@ func preflightChartMutations(
 				return proof, err
 			}
 		case current[key].object == nil:
-			result.Blocking = append(result.Blocking,
+			result.blockRefused(
 				fmt.Sprintf("create %s: an object already exists but is not owned by the current Helm release", desired.description()))
 		default:
 			original := current[key]
@@ -570,7 +570,7 @@ func requireMutationPermission(ctx context.Context, kc kubernetes.Interface, res
 		detail += ": " + reason
 	}
 	if check.blocking {
-		result.Blocking = append(result.Blocking, detail)
+		result.blockDenied(detail)
 	} else {
 		result.Advisory = append(result.Advisory, detail)
 	}
@@ -582,7 +582,12 @@ func recordMutationError(result *PreflightResult, preflightName, description str
 		return nil
 	}
 	if isActionableKubernetesError(err) {
-		result.Blocking = append(result.Blocking, fmt.Sprintf("%s: %v", description, err))
+		line := fmt.Sprintf("%s: %v", description, err)
+		if apierrors.IsForbidden(err) {
+			result.blockDenied(line)
+		} else {
+			result.blockRefused(line)
+		}
 		return nil
 	}
 	return fmt.Errorf("%s: %s: %w", preflightName, description, err)

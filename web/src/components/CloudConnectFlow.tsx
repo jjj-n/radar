@@ -85,8 +85,19 @@ function BlockedView({
     blocked.reason === 'gitops'
       ? 'This install is managed by GitOps'
       : blocked.reason === 'preflight'
-        ? 'The planned install didn’t pass its dry run'
+        ? blocked.cause === 'permissions'
+          ? 'Missing Kubernetes permissions'
+          : blocked.cause === 'verification'
+            ? 'Radar can’t verify this install is safe'
+            : 'Something in the cluster is in the way'
         : 'This cluster can’t be connected from here'
+  // The browser wizard is offered only where it changes the outcome: a
+  // person with broader permissions can run it, and a human can check what
+  // Radar could not prove. A cluster refusal would meet the wizard's Helm
+  // command the same way, and GitOps and unsupported refusals named a target
+  // a generic link cannot carry, so offering it would contradict the message.
+  const browserAlternative =
+    blocked.reason === 'preflight' && blocked.cause !== 'cluster'
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">
@@ -107,12 +118,7 @@ function BlockedView({
         </div>
       </div>
       <div className="mt-4 flex items-center gap-4">
-        {/* Only a preflight denial has a legitimate browser alternative —
-            someone with more Kubernetes permission can run the wizard. GitOps
-            and unsupported refusals named a specific reason and target that a
-            generic signup link cannot carry, so offering it would contradict
-            the message directly above. */}
-        {blocked.reason === 'preflight' && (
+        {browserAlternative && (
           <a
             href={signupUrl}
             target="_blank"
