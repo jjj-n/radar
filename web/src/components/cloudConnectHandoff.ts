@@ -9,12 +9,25 @@ import { ApiError, type CloudInstallBlocked } from '../api/client'
 // snake_case phrase is dropped here and again on the Hub.
 export const SIGNUP_QUERY = '?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal'
 
-// What the person is coming from, and whether the pitch should offer "Try
-// again": a failure can be retried, a refusal or the person's own cancel
-// cannot be "tried again" without misreading it as something going wrong.
+// What the person is coming from, whether the pitch should offer "Try
+// again" (a failure can be retried; a refusal or the person's own cancel
+// cannot be "tried again" without misreading it as something going wrong),
+// and the Helm operation Radar planned, when it got that far, so every later
+// handoff link keeps adopting the release Radar found instead of opening a
+// fresh install over it.
 export interface Handoff {
   outcome: string
   retryable: boolean
+  target?: InstallTarget | null
+}
+
+// The Hub's install page accepts a target only as an existing release to
+// adopt; a fresh install takes its defaults, which are Radar's defaults too,
+// so nothing to pass.
+export interface InstallTarget {
+  mode: 'fresh' | 'adopt'
+  namespace: string
+  release: string
 }
 
 // Closed shape, not a closed list: flow failure kinds come from the server
@@ -50,8 +63,8 @@ const BLOCKED_OUTCOMES: Record<CloudInstallBlocked['reason'], string> = {
   unsupported: 'blocked_unsupported_install',
 }
 
-export function handoffForBlocked(reason: CloudInstallBlocked['reason']): Handoff {
-  return { outcome: BLOCKED_OUTCOMES[reason], retryable: false }
+export function handoffForBlocked(reason: CloudInstallBlocked['reason'], target?: InstallTarget | null): Handoff {
+  return { outcome: BLOCKED_OUTCOMES[reason], retryable: false, target: target ?? null }
 }
 
 export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
@@ -59,26 +72,14 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }
 
-// The Helm operation Radar planned, when it got that far. The Hub's install
-// page accepts a target only as an existing release to adopt; a fresh install
-// takes its defaults, which are Radar's defaults too, so nothing to pass.
-export interface InstallTarget {
-  mode: 'fresh' | 'adopt'
-  namespace: string
-  release: string
-}
-
 // The driver lane's handoff links point at the Hub's install page, not the
 // signup pitch: signed out, the Hub stashes an /install deep link across
 // sign-in and replays it, so the person lands on the command they were
-// promised. /signup would drop them on Home.
-export function installUrlFor(
-  appUrl: string,
-  content: string,
-  handoff?: Handoff | null,
-  target?: InstallTarget | null,
-): string {
+// promised. /signup would drop them on Home. The target rides on the handoff
+// so the footer link after Back adopts the same release the card did.
+export function installUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
   const params = new URLSearchParams()
+  const target = handoff?.target
   if (target?.mode === 'adopt') {
     params.set('existing', '1')
     params.set('ns', target.namespace)

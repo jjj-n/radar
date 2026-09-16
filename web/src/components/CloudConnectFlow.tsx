@@ -87,11 +87,12 @@ function BlockedView({
     : blocked.reason === 'gitops'
       ? 'This install is managed by GitOps'
       : 'Radar can’t connect this cluster from here'
-  // GitOps refusals name a target and a workflow a generic signup link cannot
-  // carry (the values patch belongs in the repo that manages the install), so
-  // that card keeps its own instructions; every other stop ends at the same
-  // install page.
-  const installPage = blocked.reason !== 'gitops'
+  // Only a preflight stop ends at the install page. A GitOps refusal's
+  // remedy lives in the repo that manages the install, and an unsupported
+  // refusal (several Radars, one already connected, ownership Radar will not
+  // guess at) says in its message what to do — an install link there would
+  // offer a fresh install over the very thing the message says to recover.
+  const installPage = blocked.reason === 'preflight'
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">

@@ -116,8 +116,7 @@ export function CloudFunnelButton() {
   // button goes to signup; the driver lane's handoffs go to the install page,
   // carrying the planned target when there is one.
   const signupUrl = buildSignupUrl(appUrl, 'wizard-signup-button')
-  const installUrlFor = (content: string, outcome?: Handoff | null, target?: CloudInstallBlocked['attempted'] | null) =>
-    buildInstallUrl(appUrl, content, outcome, target)
+  const installUrlFor = (content: string, outcome?: Handoff | null) => buildInstallUrl(appUrl, content, outcome)
 
   // Only while the dialog is open — never on the capabilities poll. The Hub
   // learns that someone opened it, which is congruent with what the dialog is
@@ -207,14 +206,15 @@ export function CloudFunnelButton() {
   // later. Leaving a live plan is the user canceling it, not a failure. Only
   // a connected flow, or no flow at all, leaves nothing to carry.
   const outcomeOf = (st: CloudInstallStatus): Handoff | null => {
-    if (blocked) return handoffForBlocked(blocked.reason)
+    if (blocked) return handoffForBlocked(blocked.reason, blocked.attempted)
     if (st.state === 'failed') {
       return {
         outcome: isHandoffOutcome(st.failure?.kind) ? st.failure.kind : 'failure_kind_unknown',
         retryable: st.failure?.retrySafe ?? false,
+        target: st.plan ? { mode: st.plan.mode, namespace: st.plan.namespace, release: st.plan.release } : null,
       }
     }
-    if (st.state === 'blocked' && st.blocked) return handoffForBlocked(st.blocked.reason)
+    if (st.state === 'blocked' && st.blocked) return handoffForBlocked(st.blocked.reason, st.blocked.attempted)
     if (st.state === 'connected' || st.state === 'idle') return null
     return { outcome: 'install_plan_canceled', retryable: false }
   }
@@ -308,7 +308,7 @@ export function CloudFunnelButton() {
             <CloudConnectFlow
               status={flowForView}
               blocked={blocked}
-              signupUrl={installUrlFor('driver-blocked-card-browser-link', outcomeOf(flowForView), blocked?.attempted)}
+              signupUrl={installUrlFor('driver-blocked-card-browser-link', outcomeOf(flowForView))}
               onStatus={applyStatus}
               onExit={() => exitFlow(outcomeOf(flowForView))}
             />

@@ -31,14 +31,20 @@ describe('installUrlFor', () => {
     expect(installUrlFor(APP, 'driver-footer-browser-link')).toBe(
       `${APP}/install?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-footer-browser-link`,
     )
-    expect(installUrlFor(APP, 'driver-blocked-card-browser-link', null, { mode: 'fresh', namespace: 'radar', release: 'radar' })).not.toContain('existing')
+    expect(
+      installUrlFor(APP, 'driver-blocked-card-browser-link', {
+        outcome: 'blocked_preflight_checks_failed',
+        retryable: false,
+        target: { mode: 'fresh', namespace: 'radar', release: 'radar' },
+      }),
+    ).not.toContain('existing')
   })
 
   it('carries an existing release to adopt, plus the outcome', () => {
-    const url = installUrlFor(APP, 'driver-blocked-card-browser-link', { outcome: 'blocked_preflight_checks_failed', retryable: false }, {
-      mode: 'adopt',
-      namespace: 'monitoring',
-      release: 'radar-prod',
+    const url = installUrlFor(APP, 'driver-blocked-card-browser-link', {
+      outcome: 'blocked_preflight_checks_failed',
+      retryable: false,
+      target: { mode: 'adopt', namespace: 'monitoring', release: 'radar-prod' },
     })
     expect(url).toBe(
       `${APP}/install?existing=1&ns=monitoring&release=radar-prod&utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-blocked-card-browser-link&radar_outcome=blocked_preflight_checks_failed`,
@@ -63,9 +69,14 @@ describe('handoffForPrepareError', () => {
 
 describe('handoffForBlocked', () => {
   it('names the refusal and does not offer a retry', () => {
-    expect(handoffForBlocked('gitops')).toEqual({ outcome: 'blocked_gitops_managed_install', retryable: false })
-    expect(handoffForBlocked('preflight')).toEqual({ outcome: 'blocked_preflight_checks_failed', retryable: false })
-    expect(handoffForBlocked('unsupported')).toEqual({ outcome: 'blocked_unsupported_install', retryable: false })
+    expect(handoffForBlocked('gitops')).toEqual({ outcome: 'blocked_gitops_managed_install', retryable: false, target: null })
+    expect(handoffForBlocked('preflight')).toEqual({ outcome: 'blocked_preflight_checks_failed', retryable: false, target: null })
+    expect(handoffForBlocked('unsupported')).toEqual({ outcome: 'blocked_unsupported_install', retryable: false, target: null })
+  })
+
+  it('keeps the release Radar found so a later footer link still adopts it', () => {
+    const h = handoffForBlocked('preflight', { mode: 'adopt', namespace: 'monitoring', release: 'radar-prod' })
+    expect(installUrlFor(APP, 'driver-footer-browser-link', h)).toContain('existing=1&ns=monitoring&release=radar-prod')
   })
 })
 
