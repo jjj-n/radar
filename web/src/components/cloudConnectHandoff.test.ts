@@ -28,8 +28,8 @@ describe('signupUrlFor', () => {
 
 describe('installUrlFor', () => {
   it('lands on the install page with its defaults for a fresh install or no plan', () => {
-    expect(installUrlFor(APP, 'driver-footer-browser-link')).toBe(
-      `${APP}/install?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-footer-browser-link`,
+    expect(installUrlFor(APP, 'driver-blocked-card-browser-link')).toBe(
+      `${APP}/install?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-blocked-card-browser-link`,
     )
     expect(
       installUrlFor(APP, 'driver-blocked-card-browser-link', {
@@ -74,35 +74,13 @@ describe('handoffForBlocked', () => {
     expect(handoffForBlocked('unsupported')).toEqual({ outcome: 'blocked_unsupported_install', retryable: false, target: null })
   })
 
-  it('does not offer an install after a refusal whose remedy is elsewhere, even with a known release', () => {
-    const target = { mode: 'adopt' as const, namespace: 'radar', release: 'radar' }
-    for (const reason of ['gitops', 'unsupported'] as const) {
-      for (const h of [handoffForBlocked(reason), handoffForBlocked(reason, target)]) {
-        const url = installUrlFor(APP, 'driver-footer-browser-link', h)
-        expect(url).toContain('/signup?')
-        expect(url).not.toContain('existing=1')
-      }
-    }
-  })
-
-  it('does not offer an install after a failure the server marked unsafe to retry', () => {
-    // A pairing or an install may already exist; recovery is on the failed card.
-    for (const outcome of ['helm_provision_failed', 'installed_but_tunnel_not_confirmed', 'approved_but_credential_pickup_expired', 'approval_outcome_unknown']) {
-      expect(installUrlFor(APP, 'driver-footer-browser-link', { outcome, retryable: false })).toContain('/signup?')
-    }
-    // Nothing was created in these; the install page is the way forward.
-    for (const h of [
-      { outcome: 'hub_connect_request_failed', retryable: true },
-      { outcome: 'blocked_preflight_checks_failed', retryable: false },
-      { outcome: 'install_plan_canceled', retryable: false },
-    ]) {
-      expect(installUrlFor(APP, 'driver-footer-browser-link', h)).toContain('/install?')
-    }
-  })
-
-  it('keeps the release Radar found so a later footer link still adopts it', () => {
+  it('carries the release Radar found into the card link', () => {
     const h = handoffForBlocked('preflight', { mode: 'adopt', namespace: 'monitoring', release: 'radar-prod' })
-    expect(installUrlFor(APP, 'driver-footer-browser-link', h)).toContain('existing=1&ns=monitoring&release=radar-prod')
+    expect(installUrlFor(APP, 'driver-blocked-card-browser-link', h)).toContain('existing=1&ns=monitoring&release=radar-prod')
+    // The footer never deep-links: whatever the last attempt left behind, it
+    // stays on the pitch, where a wrong guess cannot become a fresh install.
+    expect(signupUrlFor(APP, 'driver-footer-browser-link', h)).toMatch(/\/signup\?/)
+    expect(signupUrlFor(APP, 'driver-footer-browser-link', h)).not.toContain('existing')
   })
 })
 

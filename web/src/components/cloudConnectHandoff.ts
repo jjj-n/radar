@@ -12,9 +12,8 @@ export const SIGNUP_QUERY = '?utm_source=radar-oss&utm_medium=app&utm_campaign=c
 // What the person is coming from, whether the pitch should offer "Try
 // again" (a failure can be retried; a refusal or the person's own cancel
 // cannot be "tried again" without misreading it as something going wrong),
-// and the Helm operation Radar planned, when it got that far, so every later
-// handoff link keeps adopting the release Radar found instead of opening a
-// fresh install over it.
+// and, for a blocked plan, the release Radar found so the card's install
+// link adopts it instead of opening a fresh install over it.
 export interface Handoff {
   outcome: string
   retryable: boolean
@@ -72,32 +71,15 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }
 
-// Refusals whose remedy is not an install: the GitOps card sends the person
-// to their repo, the unsupported card's message says what to recover or pick.
-const REFUSALS_WITHOUT_AN_INSTALL = new Set([BLOCKED_OUTCOMES.gitops, BLOCKED_OUTCOMES.unsupported])
-
-// Whether a handoff may lead to the Hub's install page. Two things rule it
-// out: a refusal whose remedy is elsewhere, whatever release it names; and a
-// failure the server marked not safe to retry — a Hub pairing or a
-// Kubernetes install may already exist, its recovery is on the failed card,
-// and a second install would compound it. A blocked preflight and a canceled
-// plan are not retryable either, but nothing was created, so installing from
-// the browser is exactly the way forward.
-export function leadsToInstall(handoff: Handoff | null | undefined): boolean {
-  if (!handoff) return true
-  if (REFUSALS_WITHOUT_AN_INSTALL.has(handoff.outcome)) return false
-  if (handoff.retryable || handoff.outcome.startsWith('blocked_') || handoff.outcome === 'install_plan_canceled') return true
-  return false
-}
-
-// The driver lane's handoff links point at the Hub's install page, not the
-// signup pitch: signed out, the Hub stashes an /install deep link across
-// sign-in and replays it, so the person lands on the command they were
-// promised. /signup would drop them on Home. The target rides on the handoff
-// so the footer link after Back adopts the same release the card did. A
-// handoff that must not lead to an install falls back to the pitch.
+// The blocked card's button deep-links the Hub's install page: signed out,
+// the Hub stashes an /install link across sign-in and replays it, so the
+// person lands on the command they were promised, adopting the release Radar
+// just found when there is one. Only the card builds this link. It is the one
+// moment Radar has just established what is in the cluster; the footer's
+// standing "or set up in the browser" link is built from whatever the last
+// attempt left behind and stays on the signup pitch, where a wrong guess about
+// the cluster cannot become a fresh install over an existing release.
 export function installUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
-  if (!leadsToInstall(handoff)) return signupUrlFor(appUrl, content, handoff)
   const params = new URLSearchParams()
   const target = handoff?.target
   if (target?.mode === 'adopt') {

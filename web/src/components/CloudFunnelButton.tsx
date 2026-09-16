@@ -112,11 +112,10 @@ export function CloudFunnelButton() {
   const lane = capabilities.data?.cloudConnect?.lane ?? 'wizard'
   const appUrl = capabilities.data?.cloudConnect?.appUrl || FALLBACK_APP_URL
   // utm_content names the link that was clicked. It travels only in the link
-  // the user opens; Radar sends nothing on its own. The wizard lane's pitch
-  // button goes to signup; the driver lane's handoffs go to the install page,
-  // carrying the planned target when there is one.
+  // the user opens; Radar sends nothing on its own. Only the blocked card
+  // deep-links the install page (see installUrlFor); the pitch buttons and
+  // the footer link go to signup.
   const signupUrl = buildSignupUrl(appUrl, 'wizard-signup-button')
-  const installUrlFor = (content: string, outcome?: Handoff | null) => buildInstallUrl(appUrl, content, outcome)
 
   // Only while the dialog is open — never on the capabilities poll. The Hub
   // learns that someone opened it, which is congruent with what the dialog is
@@ -205,23 +204,17 @@ export function CloudFunnelButton() {
   // already honors retrySafe, and the pitch must not contradict it two clicks
   // later. Leaving a live plan is the user canceling it, not a failure. Only
   // a connected flow, or no flow at all, leaves nothing to carry.
-  // Every handoff built from a status that had a plan keeps that plan's
-  // release, so no later link — footer, card, after Back or a failure —
-  // offers a fresh install over a release Radar already found.
-  const targetOf = (st: CloudInstallStatus) =>
-    st.plan ? { mode: st.plan.mode, namespace: st.plan.namespace, release: st.plan.release } : null
   const outcomeOf = (st: CloudInstallStatus): Handoff | null => {
     if (blocked) return handoffForBlocked(blocked.reason, blocked.attempted)
     if (st.state === 'failed') {
       return {
         outcome: isHandoffOutcome(st.failure?.kind) ? st.failure.kind : 'failure_kind_unknown',
         retryable: st.failure?.retrySafe ?? false,
-        target: targetOf(st),
       }
     }
     if (st.state === 'blocked' && st.blocked) return handoffForBlocked(st.blocked.reason, st.blocked.attempted)
     if (st.state === 'connected' || st.state === 'idle') return null
-    return { outcome: 'install_plan_canceled', retryable: false, target: targetOf(st) }
+    return { outcome: 'install_plan_canceled', retryable: false }
   }
 
   useEffect(() => {
@@ -313,7 +306,7 @@ export function CloudFunnelButton() {
             <CloudConnectFlow
               status={flowForView}
               blocked={blocked}
-              signupUrl={installUrlFor('driver-blocked-card-browser-link', outcomeOf(flowForView))}
+              signupUrl={buildInstallUrl(appUrl, 'driver-blocked-card-browser-link', outcomeOf(flowForView))}
               onStatus={applyStatus}
               onExit={() => exitFlow(outcomeOf(flowForView))}
             />
@@ -328,7 +321,7 @@ export function CloudFunnelButton() {
               signupUrl={signupUrl}
               // One link name whether or not an attempt preceded the click; the
               // outcome, when present, is what says an attempt happened.
-              driverBrowserUrl={installUrlFor('driver-footer-browser-link', handoff)}
+              driverBrowserUrl={buildSignupUrl(appUrl, 'driver-footer-browser-link', handoff)}
               prepareFailed={prepareFailed}
               assurances={connectInfo.data?.assurances}
               notice={connectInfo.data?.notice}
