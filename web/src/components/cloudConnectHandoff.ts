@@ -72,12 +72,21 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }
 
+// Refusals whose remedy is not an install: the GitOps card sends the person
+// to their repo, the unsupported card's message says what to recover or pick.
+// A link into the Hub's fresh-install page after either would contradict
+// what they just read, so those handoffs fall back to the signup pitch.
+const REFUSALS_WITHOUT_AN_INSTALL = new Set([BLOCKED_OUTCOMES.gitops, BLOCKED_OUTCOMES.unsupported])
+
 // The driver lane's handoff links point at the Hub's install page, not the
 // signup pitch: signed out, the Hub stashes an /install deep link across
 // sign-in and replays it, so the person lands on the command they were
 // promised. /signup would drop them on Home. The target rides on the handoff
 // so the footer link after Back adopts the same release the card did.
 export function installUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
+  if (handoff && !handoff.target && REFUSALS_WITHOUT_AN_INSTALL.has(handoff.outcome)) {
+    return signupUrlFor(appUrl, content, handoff)
+  }
   const params = new URLSearchParams()
   const target = handoff?.target
   if (target?.mode === 'adopt') {

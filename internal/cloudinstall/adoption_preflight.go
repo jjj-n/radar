@@ -252,7 +252,15 @@ func preflightChartMutations(
 					proof.created = append(proof.created, desired)
 				}
 			}
-			if roleKey, ok := preparedBindingRole(desired, target); ok && created[roleKey] && missingPreparedRole(mutationErr, roleKey) {
+			// The binding's NotFound for a prepared role depends entirely on that
+			// role's own dry run (see preflightFreshChartCreates): proven role →
+			// note it and count the binding as created; refused role → the
+			// refusal is already recorded and is the real cause, so recording
+			// this too would let a dependent error outrank a permission denial.
+			if roleKey, ok := preparedBindingRole(desired, target); ok && missingPreparedRole(mutationErr, roleKey) {
+				if !created[roleKey] {
+					continue
+				}
 				if !notedEphemeralRoles[roleKey] {
 					result.Advisory = append(result.Advisory, fmt.Sprintf(
 						"create %s: Kubernetes could not complete bind admission because referenced %s %q exists only for the duration of its successful dry-run; Helm creates that proven role before its bindings during the real upgrade",

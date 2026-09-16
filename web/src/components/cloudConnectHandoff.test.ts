@@ -74,6 +74,14 @@ describe('handoffForBlocked', () => {
     expect(handoffForBlocked('unsupported')).toEqual({ outcome: 'blocked_unsupported_install', retryable: false, target: null })
   })
 
+  it('does not offer a fresh install after a refusal whose remedy is elsewhere', () => {
+    for (const reason of ['gitops', 'unsupported'] as const) {
+      const url = installUrlFor(APP, 'driver-footer-browser-link', handoffForBlocked(reason))
+      expect(url).toContain('/signup?')
+      expect(url).not.toContain('/install')
+    }
+  })
+
   it('keeps the release Radar found so a later footer link still adopts it', () => {
     const h = handoffForBlocked('preflight', { mode: 'adopt', namespace: 'monitoring', release: 'radar-prod' })
     expect(installUrlFor(APP, 'driver-footer-browser-link', h)).toContain('existing=1&ns=monitoring&release=radar-prod')
