@@ -9,6 +9,7 @@ import {
   type Handoff,
   handoffForBlocked,
   handoffForPrepareError,
+  installUrlFor as buildInstallUrl,
   isHandoffOutcome,
   signupUrlFor as buildSignupUrl,
 } from './cloudConnectHandoff'
@@ -111,9 +112,12 @@ export function CloudFunnelButton() {
   const lane = capabilities.data?.cloudConnect?.lane ?? 'wizard'
   const appUrl = capabilities.data?.cloudConnect?.appUrl || FALLBACK_APP_URL
   // utm_content names the link that was clicked. It travels only in the link
-  // the user opens; Radar sends nothing on its own.
-  const signupUrlFor = (content: string, outcome?: Handoff | null) => buildSignupUrl(appUrl, content, outcome)
-  const signupUrl = signupUrlFor('wizard-signup-button')
+  // the user opens; Radar sends nothing on its own. The wizard lane's pitch
+  // button goes to signup; the driver lane's handoffs go to the install page,
+  // carrying the planned target when there is one.
+  const signupUrl = buildSignupUrl(appUrl, 'wizard-signup-button')
+  const installUrlFor = (content: string, outcome?: Handoff | null, target?: CloudInstallBlocked['attempted'] | null) =>
+    buildInstallUrl(appUrl, content, outcome, target)
 
   // Only while the dialog is open — never on the capabilities poll. The Hub
   // learns that someone opened it, which is congruent with what the dialog is
@@ -304,7 +308,7 @@ export function CloudFunnelButton() {
             <CloudConnectFlow
               status={flowForView}
               blocked={blocked}
-              signupUrl={signupUrlFor('driver-blocked-card-browser-link', outcomeOf(flowForView))}
+              signupUrl={installUrlFor('driver-blocked-card-browser-link', outcomeOf(flowForView), blocked?.attempted)}
               onStatus={applyStatus}
               onExit={() => exitFlow(outcomeOf(flowForView))}
             />
@@ -319,7 +323,7 @@ export function CloudFunnelButton() {
               signupUrl={signupUrl}
               // One link name whether or not an attempt preceded the click; the
               // outcome, when present, is what says an attempt happened.
-              driverBrowserUrl={signupUrlFor('driver-footer-browser-link', handoff)}
+              driverBrowserUrl={installUrlFor('driver-footer-browser-link', handoff)}
               prepareFailed={prepareFailed}
               assurances={connectInfo.data?.assurances}
               notice={connectInfo.data?.notice}

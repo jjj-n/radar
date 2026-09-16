@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { ApiError } from '../api/client'
-import { handoffForBlocked, handoffForPrepareError, isHandoffOutcome, signupUrlFor } from './cloudConnectHandoff'
+import { handoffForBlocked, handoffForPrepareError, installUrlFor, isHandoffOutcome, signupUrlFor } from './cloudConnectHandoff'
 
 const APP = 'https://app.test.example'
 
@@ -23,6 +23,26 @@ describe('signupUrlFor', () => {
     for (const bad of ['connect failed: dial tcp 10.0.0.1', 'Prod-East', '', 'a'.repeat(41), 'x&y=1']) {
       expect(signupUrlFor(APP, 'driver-footer-browser-link', { outcome: bad, retryable: true })).not.toContain('radar_outcome')
     }
+  })
+})
+
+describe('installUrlFor', () => {
+  it('lands on the install page with its defaults for a fresh install or no plan', () => {
+    expect(installUrlFor(APP, 'driver-footer-browser-link')).toBe(
+      `${APP}/install?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-footer-browser-link`,
+    )
+    expect(installUrlFor(APP, 'driver-blocked-card-browser-link', null, { mode: 'fresh', namespace: 'radar', release: 'radar' })).not.toContain('existing')
+  })
+
+  it('carries an existing release to adopt, plus the outcome', () => {
+    const url = installUrlFor(APP, 'driver-blocked-card-browser-link', { outcome: 'blocked_preflight_checks_failed', retryable: false }, {
+      mode: 'adopt',
+      namespace: 'monitoring',
+      release: 'radar-prod',
+    })
+    expect(url).toBe(
+      `${APP}/install?existing=1&ns=monitoring&release=radar-prod&utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-blocked-card-browser-link&radar_outcome=blocked_preflight_checks_failed`,
+    )
   })
 })
 

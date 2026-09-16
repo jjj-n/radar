@@ -58,3 +58,33 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
   const url = `${appUrl}/signup${SIGNUP_QUERY}&utm_content=${content}`
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }
+
+// The Helm operation Radar planned, when it got that far. The Hub's install
+// page accepts a target only as an existing release to adopt; a fresh install
+// takes its defaults, which are Radar's defaults too, so nothing to pass.
+export interface InstallTarget {
+  mode: 'fresh' | 'adopt'
+  namespace: string
+  release: string
+}
+
+// The driver lane's handoff links point at the Hub's install page, not the
+// signup pitch: signed out, the Hub stashes an /install deep link across
+// sign-in and replays it, so the person lands on the command they were
+// promised. /signup would drop them on Home.
+export function installUrlFor(
+  appUrl: string,
+  content: string,
+  handoff?: Handoff | null,
+  target?: InstallTarget | null,
+): string {
+  const params = new URLSearchParams()
+  if (target?.mode === 'adopt') {
+    params.set('existing', '1')
+    params.set('ns', target.namespace)
+    params.set('release', target.release)
+  }
+  const query = params.toString()
+  const url = `${appUrl}/install?${query ? `${query}&` : ''}${SIGNUP_QUERY.slice(1)}&utm_content=${content}`
+  return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
+}
