@@ -74,19 +74,30 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
 
 // Refusals whose remedy is not an install: the GitOps card sends the person
 // to their repo, the unsupported card's message says what to recover or pick.
-// A link into the Hub's fresh-install page after either would contradict
-// what they just read, so those handoffs fall back to the signup pitch.
 const REFUSALS_WITHOUT_AN_INSTALL = new Set([BLOCKED_OUTCOMES.gitops, BLOCKED_OUTCOMES.unsupported])
+
+// Whether a handoff may lead to the Hub's install page. Two things rule it
+// out: a refusal whose remedy is elsewhere, whatever release it names; and a
+// failure the server marked not safe to retry — a Hub pairing or a
+// Kubernetes install may already exist, its recovery is on the failed card,
+// and a second install would compound it. A blocked preflight and a canceled
+// plan are not retryable either, but nothing was created, so installing from
+// the browser is exactly the way forward.
+export function leadsToInstall(handoff: Handoff | null | undefined): boolean {
+  if (!handoff) return true
+  if (REFUSALS_WITHOUT_AN_INSTALL.has(handoff.outcome)) return false
+  if (handoff.retryable || handoff.outcome.startsWith('blocked_') || handoff.outcome === 'install_plan_canceled') return true
+  return false
+}
 
 // The driver lane's handoff links point at the Hub's install page, not the
 // signup pitch: signed out, the Hub stashes an /install deep link across
 // sign-in and replays it, so the person lands on the command they were
 // promised. /signup would drop them on Home. The target rides on the handoff
-// so the footer link after Back adopts the same release the card did.
+// so the footer link after Back adopts the same release the card did. A
+// handoff that must not lead to an install falls back to the pitch.
 export function installUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
-  if (handoff && !handoff.target && REFUSALS_WITHOUT_AN_INSTALL.has(handoff.outcome)) {
-    return signupUrlFor(appUrl, content, handoff)
-  }
+  if (!leadsToInstall(handoff)) return signupUrlFor(appUrl, content, handoff)
   const params = new URLSearchParams()
   const target = handoff?.target
   if (target?.mode === 'adopt') {
