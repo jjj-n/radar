@@ -97,7 +97,7 @@ func printCloudPermissionFailure(
 	if prepared.Mode() == cloudinstall.ProvisionAdopt {
 		operation = "a Helm upgrade of your existing"
 	}
-	fmt.Fprintf(w, "\nWhat Radar tried: %s release %q in namespace %q (chart %s) with the Cloud connection enabled, dry-run against the cluster as your kubeconfig identity — the same thing helm would do. Nothing was changed.\n",
+	fmt.Fprintf(w, "\nWhat Radar tried: %s release %q in namespace %q (chart %s) with the Cloud connection enabled, dry-run against the cluster as your kubeconfig identity. Nothing was changed.\n",
 		operation, prepared.ReleaseName(), prepared.Namespace(), prepared.ChartVersion())
 	fmt.Fprintln(w, "\nWhy it stopped:")
 	switch cause {
@@ -112,11 +112,11 @@ func printCloudPermissionFailure(
 		fmt.Fprintf(w, "  • %s\n", detail)
 	}
 	fmt.Fprintln(w, "\nWhat to do:")
-	fmt.Fprintln(w, "  Have a cluster admin connect it. From the browser wizard, which sets up the same connection the way this cluster is normally deployed to — a Helm command, or a values patch for Argo CD or Flux — and shows exactly what it will change first;")
-	fmt.Fprintf(w, "  or with `radar cloud install` against this cluster (your context %q; theirs may be named differently).\n", contextName)
+	fmt.Fprintln(w, "  Have a cluster admin get the install command from Radar Cloud's install page — pick Helm, Argo CD or Flux, whatever this cluster normally uses; it shows exactly what it changes first —")
+	fmt.Fprintf(w, "  or run `radar cloud install` against this cluster (your context %q; theirs may be named differently).\n", contextName)
 	if cause == cloudinstall.BlockCauseVerification {
 		// This binary's preflight would meet the same marker for them too.
-		fmt.Fprintln(w, "  Use the wizard rather than this command: it installs the same chart with Helm directly.")
+		fmt.Fprintln(w, "  Prefer the install page here: it installs the same chart with Helm directly.")
 	}
 	fmt.Fprintf(w, "  Preserve Hub %q, namespace %q, Helm release %q, Radar cluster name %q, and chart target %q.\n",
 		hubURL, prepared.Namespace(), prepared.ReleaseName(), clusterName, prepared.ChartVersion())

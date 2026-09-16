@@ -89,8 +89,9 @@ function BlockedView({
       : 'Radar can’t connect this cluster from here'
   // GitOps refusals name a target and a workflow a generic signup link cannot
   // carry (the values patch belongs in the repo that manages the install), so
-  // that card keeps its own instructions; every other stop ends at the wizard.
-  const wizard = blocked.reason !== 'gitops'
+  // that card keeps its own instructions; every other stop ends at the same
+  // install page.
+  const installPage = blocked.reason !== 'gitops'
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">
@@ -111,25 +112,29 @@ function BlockedView({
               {blocked.blocking && blocked.blocking.length > 0 && <BlockingLines lines={blocked.blocking} />}
             </>
           )}
-          {wizard && (
+          {installPage && (
             <BlockedSection label="What to do">
-              <BlockedNextStep />
+              Have a cluster admin get the install command from Radar Cloud. One page: pick Helm, Argo CD or Flux —
+              whatever this cluster normally uses — and see exactly what it changes before running it.
             </BlockedSection>
           )}
         </div>
       </div>
       <div className="mt-4 flex items-center gap-4">
-        {wizard && (
+        {installPage && (
           <a
             href={signupUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline underline-offset-2"
+            className="px-5 py-2 rounded-[10px] bg-emerald-500 hover:bg-emerald-400 text-emerald-950 text-[13.5px] font-bold shadow-[0_0_22px_rgba(16,185,129,0.35)] hover:shadow-[0_0_30px_rgba(16,185,129,0.5)] hover:-translate-y-px transition-all"
           >
-            Open the browser wizard (Helm, Argo CD or Flux) →
+            Get the install command
           </a>
         )}
-        <button onClick={onExit} className="text-[12.5px] text-theme-text-tertiary hover:text-theme-text-primary transition-colors">
+        <button
+          onClick={onExit}
+          className="ml-auto text-[12.5px] text-theme-text-tertiary hover:text-theme-text-primary transition-colors"
+        >
           Back
         </button>
       </div>
@@ -160,29 +165,22 @@ function BlockingLines({ lines }: { lines: string[] }) {
 }
 
 // The blocked card stands in for the plan card the person never saw, so it
-// carries the plan's facts first, then the stop, then the way forward. This
-// is a modal with their full attention; three short labeled parts beat one
-// dense paragraph. The way forward is the same for every cause — someone
-// with cluster access sets it up from the browser wizard — so only "why it
-// stopped" changes.
-function blockedPreflightCopy(blocked: CloudInstallBlocked): {
-  title: string
-  tried: ReactNode
-  why: string
-} {
+// carries the plan's facts first, then the stop, then the way forward. Three
+// short labeled parts, not one paragraph. The way forward is the same for
+// every cause — a cluster admin, the install page — so only "why" varies.
+function blockedPreflightCopy(blocked: CloudInstallBlocked): { title: string; tried: ReactNode; why: string } {
   const a = blocked.attempted
   const tried = a ? (
     <>
       Radar prepared {a.mode === 'adopt' ? 'a Helm upgrade of your existing' : 'a fresh Helm install of'} release{' '}
       <code className="font-mono text-[11px] text-theme-text-primary">{a.release}</code> in namespace{' '}
       <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code> with the Cloud connection
-      enabled, and dry-ran every change against the cluster as your kubeconfig identity — the same thing{' '}
-      <code className="font-mono text-[11px]">helm</code> would do. Nothing was changed.
+      enabled, and dry-ran it against the cluster as your kubeconfig identity. Nothing was changed.
     </>
   ) : (
     <>
-      Radar looked for an existing Radar install in this cluster before planning anything — Helm keeps release state
-      in Secrets in the target namespace — as your kubeconfig identity. Nothing was changed.
+      Radar looked for an existing Radar install — Helm keeps release state in Secrets in the target namespace — as
+      your kubeconfig identity. Nothing was changed.
     </>
   )
   switch (blocked.cause) {
@@ -190,34 +188,21 @@ function blockedPreflightCopy(blocked: CloudInstallBlocked): {
       return {
         title: 'Your Kubernetes identity can’t do this install',
         tried,
-        why: 'Your credentials lack permissions this needs; the refusals are listed below. Anyone with those permissions can complete this exact install.',
+        why: 'Your credentials lack permissions this needs (below). Anyone with them can complete this exact install.',
       }
     case 'verification':
       return {
         title: 'This version of Radar can’t install this chart version from here',
         tried,
-        why: 'The chart renders something this Radar build can’t check before applying, so it refuses rather than install it unseen. A limitation of the Radar you are running, not of your cluster or your access.',
+        why: 'The chart renders something this Radar build can’t check before applying, so it won’t install it unseen. A limitation of this Radar, not of your cluster or your access.',
       }
     default:
       return {
         title: 'The cluster blocked part of this install',
         tried,
-        why: 'The cluster itself refused: something already there conflicts with the install, or a policy rejects it. More permission would not change that. The refusals are listed below.',
+        why: 'The cluster refused: something already there conflicts with the install, or a policy rejects it. More permission wouldn’t change that.',
       }
   }
-}
-
-// One remedy for every blocked card: the browser wizard sets the connection
-// up the way the cluster is normally deployed to, and a cluster admin can run
-// what this identity, or this Radar, could not.
-function BlockedNextStep() {
-  return (
-    <>
-      Have a cluster admin connect it from the browser wizard. It sets up the same connection the way this cluster is
-      normally deployed to — a Helm command, or a values patch for Argo CD or Flux — and shows exactly what it will
-      change first. Send them the link below.
-    </>
-  )
 }
 
 function PlanCard({

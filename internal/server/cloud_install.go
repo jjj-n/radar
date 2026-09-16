@@ -205,11 +205,11 @@ type cloudInstallAttempted struct {
 func preflightBlockedMessage(cause cloudinstall.BlockCause) string {
 	switch cause {
 	case cloudinstall.BlockCausePermissions:
-		return "Your Kubernetes credentials lack permissions this install needs. Ask someone with those permissions to connect this cluster, or hand them the install command from the browser wizard."
+		return "Your Kubernetes credentials lack permissions this install needs. Have a cluster admin get the install command from Radar Cloud's install page (Helm, Argo CD or Flux) and connect this cluster."
 	case cloudinstall.BlockCauseVerification:
-		return "This version of Radar can't confirm every change the current chart would make, so it won't install it from here. The browser wizard installs the same chart with Helm directly."
+		return "This version of Radar can't confirm every change the current chart would make, so it won't install it from here. Radar Cloud's install page installs the same chart with Helm directly."
 	default:
-		return "Something already on the cluster, or a cluster policy, refused the changes listed below. Resolve them with your platform operator, then try connecting again."
+		return "Something already on the cluster, or a cluster policy, refused the changes listed below. Have a cluster admin resolve them and connect this cluster from Radar Cloud's install page."
 	}
 }
 
