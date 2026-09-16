@@ -90,7 +90,11 @@ describe('handoffForBlocked', () => {
     for (const outcome of ['helm_provision_failed', 'installed_but_tunnel_not_confirmed', 'approved_but_credential_pickup_expired', 'approval_outcome_unknown']) {
       expect(installUrlFor(APP, 'driver-footer-browser-link', { outcome, retryable: false })).toContain('/signup?')
     }
-    // Nothing was created in these; the install page is the way forward.
+    // Radar never learned what is in the cluster; a fresh install would be a guess.
+    for (const err of [new ApiError('down', 503), new ApiError('nope', 500), new TypeError('x'), new Error('y')]) {
+      expect(installUrlFor(APP, 'driver-footer-browser-link', handoffForPrepareError(err))).toContain('/signup?')
+    }
+    // Nothing was created in these and Radar knows what is there; the install page is the way forward.
     for (const h of [
       { outcome: 'hub_connect_request_failed', retryable: true },
       { outcome: 'blocked_preflight_checks_failed', retryable: false },

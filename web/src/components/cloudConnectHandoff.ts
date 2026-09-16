@@ -45,12 +45,19 @@ export function isHandoffOutcome(value: unknown): value is string {
 // status is Radar itself declining or failing the inspection, a TypeError is
 // fetch failing to reach Radar's own server, and anything else is a response
 // that could not be used. All of them are worth trying again.
+const INSPECTION_FAILED = {
+  noCluster: 'radar_not_connected_to_cluster',
+  failed: 'cluster_inspect_failed',
+  unreachable: 'radar_server_unreachable',
+  badResponse: 'cluster_inspect_request_error',
+} as const
+
 export function handoffForPrepareError(err: unknown): Handoff {
-  let outcome = 'cluster_inspect_request_error'
+  let outcome: string = INSPECTION_FAILED.badResponse
   if (err instanceof ApiError) {
-    outcome = err.status === 503 ? 'radar_not_connected_to_cluster' : 'cluster_inspect_failed'
+    outcome = err.status === 503 ? INSPECTION_FAILED.noCluster : INSPECTION_FAILED.failed
   } else if (err instanceof TypeError) {
-    outcome = 'radar_server_unreachable'
+    outcome = INSPECTION_FAILED.unreachable
   }
   return { outcome, retryable: true }
 }
@@ -76,16 +83,19 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
 // to their repo, the unsupported card's message says what to recover or pick.
 const REFUSALS_WITHOUT_AN_INSTALL = new Set([BLOCKED_OUTCOMES.gitops, BLOCKED_OUTCOMES.unsupported])
 
-// Whether a handoff may lead to the Hub's install page. Two things rule it
-// out: a refusal whose remedy is elsewhere, whatever release it names; and a
-// failure the server marked not safe to retry — a Hub pairing or a
-// Kubernetes install may already exist, its recovery is on the failed card,
-// and a second install would compound it. A blocked preflight and a canceled
-// plan are not retryable either, but nothing was created, so installing from
-// the browser is exactly the way forward.
+// Whether a handoff may lead to the Hub's install page. Three things rule it
+// out: a refusal whose remedy is elsewhere, whatever release it names; an
+// inspection that never finished, so Radar does not know whether a release
+// is already there for a fresh install to trample; and a failure the server
+// marked not safe to retry — a Hub pairing or a Kubernetes install may
+// already exist, its recovery is on the failed card, and a second install
+// would compound it. A blocked preflight and a canceled plan are not
+// retryable either, but Radar knows what is there and nothing was created,
+// so installing from the browser is exactly the way forward.
 export function leadsToInstall(handoff: Handoff | null | undefined): boolean {
   if (!handoff) return true
   if (REFUSALS_WITHOUT_AN_INSTALL.has(handoff.outcome)) return false
+  if ((Object.values(INSPECTION_FAILED) as string[]).includes(handoff.outcome)) return false
   if (handoff.retryable || handoff.outcome.startsWith('blocked_') || handoff.outcome === 'install_plan_canceled') return true
   return false
 }
