@@ -477,11 +477,18 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 				Message: "Multiple Radar installations were found in this cluster. Use `radar cloud install --namespace <ns> --release <name>` in a terminal to pick one explicitly.",
 			}, nil
 		}
-		// Discovery may already have found the release the plan would adopt
-		// before reading its Helm state was refused; keep pointing at it.
+		// Reading the release's Helm state was refused after discovery had run,
+		// so the target IS established: the release discovery found, or a fresh
+		// install where it found none. A denial earlier than that — discovery
+		// itself — leaves the target unknown, and the card must not offer an
+		// install over a Radar that may already be there.
 		var inspect *cloudinstall.ReleaseInspectError
-		if errors.As(err, &inspect) && inspect.Existing {
-			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
+		if errors.As(err, &inspect) {
+			mode := cloudinstall.InstallModeFresh
+			if inspect.Existing {
+				mode = cloudinstall.InstallModeAdopt
+			}
+			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(mode), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
 		}
 		return inspectBlocked(err, nil)
 	}

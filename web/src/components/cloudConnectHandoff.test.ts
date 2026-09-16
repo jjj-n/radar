@@ -28,8 +28,10 @@ describe('signupUrlFor', () => {
 
 describe('installUrlFor', () => {
   it('lands on the install page with its defaults for a fresh install or no plan', () => {
+    // method=helm is the default tab; it is there so the Hub stashes the link
+    // across sign-in, which it does only for a link carrying an intent.
     expect(installUrlFor(APP, 'driver-blocked-card-browser-link')).toBe(
-      `${APP}/install?utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-blocked-card-browser-link`,
+      `${APP}/install?method=helm&utm_source=radar-oss&utm_medium=app&utm_campaign=cloud-modal&utm_content=driver-blocked-card-browser-link`,
     )
     expect(
       installUrlFor(APP, 'driver-blocked-card-browser-link', {
@@ -37,7 +39,7 @@ describe('installUrlFor', () => {
         retryable: false,
         target: { mode: 'fresh', namespace: 'radar', release: 'radar' },
       }),
-    ).not.toContain('existing')
+    ).toContain('method=helm')
   })
 
   it('carries an existing release to adopt, plus the outcome', () => {

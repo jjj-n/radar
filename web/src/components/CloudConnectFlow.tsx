@@ -87,12 +87,13 @@ function BlockedView({
     : blocked.reason === 'gitops'
       ? 'This install is managed by GitOps'
       : 'Radar can’t connect this cluster from here'
-  // Only a preflight stop ends at the install page. A GitOps refusal's
-  // remedy lives in the repo that manages the install, and an unsupported
-  // refusal (several Radars, one already connected, ownership Radar will not
-  // guess at) says in its message what to do — an install link there would
-  // offer a fresh install over the very thing the message says to recover.
-  const installPage = blocked.reason === 'preflight'
+  // The install link is offered only when Radar established what is in the
+  // cluster: a preflight stop with a target (a release to adopt, or a fresh
+  // install where discovery found none). A denial before discovery finished
+  // leaves that unknown, and a fresh-install link could land on a Radar that
+  // is already there. A GitOps refusal's remedy lives in the repo, and an
+  // unsupported refusal's message says what to recover or pick.
+  const installPage = blocked.reason === 'preflight' && !!blocked.attempted
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">
@@ -113,11 +114,18 @@ function BlockedView({
               {blocked.blocking && blocked.blocking.length > 0 && <BlockingLines lines={blocked.blocking} />}
             </>
           )}
-          {installPage && (
+          {installPage ? (
             <BlockedSection label="What to do">
               Have a cluster admin get the install command from Radar Cloud. One page: pick Helm, Argo CD or Flux —
               whatever this cluster normally uses — and see exactly what it changes before running it.
             </BlockedSection>
+          ) : (
+            preflight && (
+              <BlockedSection label="What to do">
+                Have a cluster admin connect it from Radar Cloud. Radar couldn’t tell whether it is already installed
+                here, so they should check before installing.
+              </BlockedSection>
+            )
           )}
         </div>
       </div>
@@ -183,15 +191,20 @@ function blockedPreflightCopy(blocked: CloudInstallBlocked): { title: string; tr
   const operation = a?.mode === 'adopt' ? 'a Helm upgrade of your existing' : 'a fresh Helm install of'
   const tried =
     !a ? (
-      <>
-        Radar looked for an existing Radar install — Helm keeps release state in Secrets in the target namespace — as
-        your kubeconfig identity. Nothing was changed.
-      </>
+      <>Radar was looking for an existing Radar install in this cluster, as your kubeconfig identity. Nothing was changed.</>
     ) : a.stage === 'inspect' ? (
-      <>
-        Radar found {release} and was reading its Helm state, as your kubeconfig identity, before planning anything.
-        Nothing was changed.
-      </>
+      a.mode === 'adopt' ? (
+        <>
+          Radar found {release} and was reading its Helm state, as your kubeconfig identity, before planning anything.
+          Nothing was changed.
+        </>
+      ) : (
+        <>
+          Radar found no Radar install in this cluster and was checking Helm’s release state in namespace{' '}
+          <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code>, as your kubeconfig
+          identity, before planning anything. Nothing was changed.
+        </>
+      )
     ) : a.stage === 'prepare' ? (
       <>
         Radar planned {operation} {release} with the Cloud connection enabled and was preparing the chart, as your

@@ -86,6 +86,11 @@ export function installUrlFor(appUrl: string, content: string, handoff?: Handoff
     params.set('existing', '1')
     params.set('ns', target.namespace)
     params.set('release', target.release)
+  } else {
+    // The Hub stashes an /install link across sign-in only when it carries
+    // an intent — a target, a cluster, or a method. A fresh install has no
+    // target, so name the default tab; the person can still switch tabs.
+    params.set('method', 'helm')
   }
   const query = params.toString()
   const url = `${appUrl}/install?${query ? `${query}&` : ''}${SIGNUP_QUERY.slice(1)}&utm_content=${content}`

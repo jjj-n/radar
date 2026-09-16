@@ -994,3 +994,21 @@ func TestInspectBlockedKeepsTheAdoptionTarget(t *testing.T) {
 		t.Fatalf("refused=%+v err=%v", refused, err)
 	}
 }
+
+func TestInspectBlockedEstablishesFreshWhenDiscoveryFoundNothing(t *testing.T) {
+	denied := &cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", Existing: false,
+		Err: errors.New(`secrets is forbidden: User "dev" cannot list resource "secrets" in API group "" in the namespace "radar"`)}
+	mode := cloudinstall.InstallModeFresh
+	if denied.Existing {
+		mode = cloudinstall.InstallModeAdopt
+	}
+	blocked, err := inspectBlocked(denied, &cloudInstallAttempted{Mode: string(mode), Namespace: denied.Namespace, Release: denied.Release, Stage: attemptStageInspect})
+	if err != nil || blocked.Cause != string(cloudinstall.BlockCausePermissions) {
+		t.Fatalf("blocked=%+v err=%v", blocked, err)
+	}
+	// Discovery ran and found no Radar, so a fresh install is an established
+	// target the card may link to; a denial before discovery would carry none.
+	if blocked.Attempted == nil || blocked.Attempted.Mode != "fresh" || blocked.Attempted.Stage != attemptStageInspect {
+		t.Fatalf("attempted = %+v, want an established fresh target at the inspect stage", blocked.Attempted)
+	}
+}
