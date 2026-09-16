@@ -47,9 +47,14 @@ type ReleaseInspector interface {
 // outlive its Deployment — which is why a presenter that offers a fresh
 // install on that basis must say so and ask for a check first.
 type ReleaseInspectError struct {
-	Namespace      string
-	Release        string
+	Namespace string
+	Release   string
+	// Existing: discovery found a natively Helm-owned release matching the
+	// target — adoptable. Found: discovery found some Radar Deployment there,
+	// adoptable or not; when Found and not Existing, neither a fresh install
+	// nor an adoption is safe to offer.
 	Existing       bool
+	Found          bool
 	ScanIncomplete bool
 	Err            error
 }
@@ -146,9 +151,16 @@ func ClassifyInstallPlan(
 	}
 	inspection, err := releases.InspectCloudRelease(plan.Namespace, plan.Release)
 	if err != nil {
+		// Existing means a release a presenter may offer to adopt: the same
+		// native-Helm ownership match the deployed case below insists on. A
+		// Deployment without it would be refused as unmanaged had inspection
+		// succeeded, and must not become an adoption link because it failed.
+		existing := plan.Target != nil &&
+			plan.Target.Ownership.Classification == OwnershipNativeHelm &&
+			plan.Target.Ownership.NativeHelmMatchesTarget
 		return InstallPlan{}, &ReleaseInspectError{
 			Namespace: plan.Namespace, Release: plan.Release,
-			Existing: plan.Target != nil, ScanIncomplete: plan.ClusterWideScanError != nil,
+			Existing: existing, Found: plan.Target != nil, ScanIncomplete: plan.ClusterWideScanError != nil,
 			Err: err,
 		}
 	}

@@ -513,7 +513,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 			switch {
 			case inspect.Existing:
 				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
-			case !inspect.ScanIncomplete:
+			case !inspect.Found && !inspect.ScanIncomplete:
 				// Nothing running anywhere; only the release records were unread.
 				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeFresh), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect, ReleaseUnread: true})
 			}

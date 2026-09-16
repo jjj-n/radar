@@ -1003,10 +1003,15 @@ func TestInspectBlockedOffersFreshOnlyWhenNothingRunsAndTheScanWasComplete(t *te
 		switch {
 		case e.Existing:
 			return &cloudInstallAttempted{Mode: "adopt", Namespace: e.Namespace, Release: e.Release, Stage: attemptStageInspect}
-		case !e.ScanIncomplete:
+		case !e.Found && !e.ScanIncomplete:
 			return &cloudInstallAttempted{Mode: "fresh", Namespace: e.Namespace, Release: e.Release, Stage: attemptStageInspect, ReleaseUnread: true}
 		}
 		return nil
+	}
+	// A Radar Deployment without matching native-Helm ownership is neither
+	// adoptable nor absent: no target is offered at all.
+	if unmanaged := pick(&cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", Found: true, Existing: false, Err: err}); unmanaged != nil {
+		t.Fatalf("an unmanaged Deployment must not become an install target: %+v", unmanaged)
 	}
 	complete := pick(&cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", Err: err})
 	if complete == nil || complete.Mode != "fresh" || !complete.ReleaseUnread {
