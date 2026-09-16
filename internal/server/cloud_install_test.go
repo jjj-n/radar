@@ -1012,3 +1012,19 @@ func TestInspectBlockedEstablishesFreshWhenDiscoveryFoundNothing(t *testing.T) {
 		t.Fatalf("attempted = %+v, want an established fresh target at the inspect stage", blocked.Attempted)
 	}
 }
+
+func TestAttemptedForWithholdsAFreshTargetFromAPartialScan(t *testing.T) {
+	partial := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeFresh, Namespace: "radar", Release: "radar", ClusterWideScanError: errors.New("deployments is forbidden")}
+	if got := attemptedFor(partial, attemptStagePreflight); got != nil {
+		t.Fatalf("a fresh plan from a partial scan must not become an install target: %+v", got)
+	}
+	adopt := partial
+	adopt.Mode = cloudinstall.InstallModeAdopt
+	if got := attemptedFor(adopt, attemptStagePreflight); got == nil || got.Mode != "adopt" {
+		t.Fatalf("an adopt target is established regardless of scan scope: %+v", got)
+	}
+	complete := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeFresh, Namespace: "radar", Release: "radar"}
+	if got := attemptedFor(complete, attemptStagePreflight); got == nil || got.Mode != "fresh" {
+		t.Fatalf("a complete scan establishes fresh: %+v", got)
+	}
+}

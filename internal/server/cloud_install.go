@@ -455,7 +455,15 @@ func inspectBlocked(err error, attempted *cloudInstallAttempted) (*cloudInstallB
 	return &cloudInstallBlocked{Reason: "unsupported", Attempted: attempted, Message: err.Error()}, nil
 }
 
+// attemptedFor names the target the card may link to. A fresh plan built on
+// a discovery that could only see the default namespace is not one: another
+// Radar may exist elsewhere, the plan card would have said so and asked for
+// an acknowledgement, and the blocked card has no such step, so it carries no
+// target and offers no install link.
 func attemptedFor(plan cloudinstall.InstallPlan, stage string) *cloudInstallAttempted {
+	if plan.Mode == cloudinstall.InstallModeFresh && plan.ClusterWideScanError != nil {
+		return nil
+	}
 	return &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release, Stage: stage}
 }
 
