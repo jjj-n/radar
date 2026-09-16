@@ -1899,7 +1899,15 @@ export interface CloudInstallBlocked {
   // dry-run — the plan card never renders when preflight blocks, so the
   // blocked card states what Radar tried itself.
   cause?: 'permissions' | 'cluster' | 'verification'
-  attempted?: { mode: 'fresh' | 'adopt'; namespace: string; release: string; stage: 'inspect' | 'prepare' | 'preflight' }
+  attempted?: {
+    mode: 'fresh' | 'adopt'
+    namespace: string
+    release: string
+    stage: 'inspect' | 'prepare' | 'preflight'
+    // Discovery saw only the default namespace; a fresh plan is not proof
+    // that no Radar exists elsewhere.
+    partialScan?: boolean
+  }
   message: string
   blocking?: string[]
 }

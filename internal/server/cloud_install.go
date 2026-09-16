@@ -201,6 +201,10 @@ type cloudInstallAttempted struct {
 	// release's Helm state), prepare (rendering the chart), preflight (the dry
 	// run) — so the card describes what was done, not what was planned.
 	Stage string `json:"stage"`
+	// PartialScan: discovery could only see the default namespace, so a fresh
+	// plan does not establish that no Radar exists elsewhere. The card still
+	// tells what was attempted but offers no install link.
+	PartialScan bool `json:"partialScan,omitempty"`
 }
 
 const (
@@ -455,16 +459,17 @@ func inspectBlocked(err error, attempted *cloudInstallAttempted) (*cloudInstallB
 	return &cloudInstallBlocked{Reason: "unsupported", Attempted: attempted, Message: err.Error()}, nil
 }
 
-// attemptedFor names the target the card may link to. A fresh plan built on
-// a discovery that could only see the default namespace is not one: another
+// attemptedFor describes what Radar did with the plan. A fresh plan built on
+// a discovery that could only see the default namespace is flagged: another
 // Radar may exist elsewhere, the plan card would have said so and asked for
-// an acknowledgement, and the blocked card has no such step, so it carries no
-// target and offers no install link.
+// an acknowledgement, and the blocked card has no such step, so it must not
+// offer an install link — but it still tells the truth about the stage
+// reached, or its refusals below would describe a dry run it denied running.
 func attemptedFor(plan cloudinstall.InstallPlan, stage string) *cloudInstallAttempted {
-	if plan.Mode == cloudinstall.InstallModeFresh && plan.ClusterWideScanError != nil {
-		return nil
+	return &cloudInstallAttempted{
+		Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release, Stage: stage,
+		PartialScan: plan.Mode == cloudinstall.InstallModeFresh && plan.ClusterWideScanError != nil,
 	}
-	return &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release, Stage: stage}
 }
 
 func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstallFlow) (*cloudInstallBlocked, error) {

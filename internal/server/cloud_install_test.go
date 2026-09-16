@@ -1010,18 +1010,21 @@ func TestInspectBlockedNeverEstablishesFreshBeforeInspectionCompletes(t *testing
 	}
 }
 
-func TestAttemptedForWithholdsAFreshTargetFromAPartialScan(t *testing.T) {
+func TestAttemptedForFlagsAFreshPlanFromAPartialScan(t *testing.T) {
 	partial := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeFresh, Namespace: "radar", Release: "radar", ClusterWideScanError: errors.New("deployments is forbidden")}
-	if got := attemptedFor(partial, attemptStagePreflight); got != nil {
-		t.Fatalf("a fresh plan from a partial scan must not become an install target: %+v", got)
+	got := attemptedFor(partial, attemptStagePreflight)
+	// The stage reached is still told — the refusals below describe a dry run
+	// that did run — but the target is not one the card may link to.
+	if got == nil || got.Stage != attemptStagePreflight || !got.PartialScan {
+		t.Fatalf("attempted = %+v, want the preflight stage flagged as a partial scan", got)
 	}
 	adopt := partial
 	adopt.Mode = cloudinstall.InstallModeAdopt
-	if got := attemptedFor(adopt, attemptStagePreflight); got == nil || got.Mode != "adopt" {
+	if got := attemptedFor(adopt, attemptStagePreflight); got == nil || got.PartialScan {
 		t.Fatalf("an adopt target is established regardless of scan scope: %+v", got)
 	}
 	complete := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeFresh, Namespace: "radar", Release: "radar"}
-	if got := attemptedFor(complete, attemptStagePreflight); got == nil || got.Mode != "fresh" {
+	if got := attemptedFor(complete, attemptStagePreflight); got == nil || got.PartialScan {
 		t.Fatalf("a complete scan establishes fresh: %+v", got)
 	}
 }

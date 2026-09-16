@@ -93,7 +93,7 @@ function BlockedView({
   // leaves that unknown, and a fresh-install link could land on a Radar that
   // is already there. A GitOps refusal's remedy lives in the repo, and an
   // unsupported refusal's message says what to recover or pick.
-  const installPage = blocked.reason === 'preflight' && !!blocked.attempted
+  const installPage = blocked.reason === 'preflight' && !!blocked.attempted && !blocked.attempted.partialScan
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">
@@ -122,8 +122,16 @@ function BlockedView({
           ) : (
             preflight && (
               <BlockedSection label="What to do">
-                Have a cluster admin connect it from Radar Cloud. Radar couldn’t tell whether it is already installed
-                here, so they should check before installing.
+                Have a cluster admin connect it from Radar Cloud.{' '}
+                {blocked.attempted?.partialScan ? (
+                  <>
+                    Radar could only check namespace{' '}
+                    <code className="font-mono text-[11px] text-theme-text-primary">{blocked.attempted.namespace}</code>{' '}
+                    for an existing install, so they should check the rest of the cluster before installing.
+                  </>
+                ) : (
+                  <>Radar couldn’t tell whether it is already installed here, so they should check before installing.</>
+                )}
               </BlockedSection>
             )
           )}
