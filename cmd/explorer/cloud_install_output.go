@@ -89,7 +89,7 @@ func printCloudPermissionFailure(
 	case cloudinstall.BlockCausePermissions:
 		fmt.Fprintf(w, "%s Your Kubernetes credentials lack permissions this install needs.\n", marker)
 	case cloudinstall.BlockCauseVerification:
-		fmt.Fprintf(w, "%s Radar can't check every change this install would make, so it won't make them blind.\n", marker)
+		fmt.Fprintf(w, "%s This version of Radar can't confirm every change the current chart would make, so it won't install it from here.\n", marker)
 	default:
 		fmt.Fprintf(w, "%s The cluster blocked part of the planned install.\n", marker)
 	}
@@ -105,7 +105,7 @@ func printCloudPermissionFailure(
 	case cloudinstall.BlockCauseVerification:
 		// Running this command again meets the same hidden-Secret marker, so
 		// the way forward is the wizard's Helm command, reviewed by a person.
-		fmt.Fprintln(w, "The rendered chart hides some Secret values. Install from the browser wizard instead: it shows the Helm command for this cluster to review and run by hand.")
+		fmt.Fprintln(w, "Install from the browser wizard instead: it installs the same chart with Helm directly, and its command can be reviewed before running.")
 	default:
 		fmt.Fprintln(w, "Resolve these with your platform operator, then run `radar cloud install` again.")
 	}

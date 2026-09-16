@@ -195,7 +195,7 @@ func preflightBlockedMessage(cause cloudinstall.BlockCause) string {
 	case cloudinstall.BlockCausePermissions:
 		return "Your Kubernetes credentials lack permissions this install needs. Ask someone with those permissions to connect this cluster, or hand them the install command from the browser wizard."
 	case cloudinstall.BlockCauseVerification:
-		return "The rendered chart hides some Secret values, so Radar can't confirm every change it would make and won't make them blind. Use the browser wizard to review and run the Helm install yourself."
+		return "This version of Radar can't confirm every change the current chart would make, so it won't install it from here. The browser wizard installs the same chart with Helm directly."
 	default:
 		return "Something already on the cluster, or a cluster policy, refused the changes listed below. Resolve them with your platform operator, then try connecting again."
 	}

@@ -38,7 +38,10 @@ const (
 	// change. More permission would not help; something has to be resolved.
 	BlockCauseCluster BlockCause = "cluster"
 	// BlockCauseVerification: nothing was refused, but Radar could not prove
-	// what the install would do, so it declines to do it blind.
+	// what the install would do, so it declines to do it blind. Today this can
+	// only mean the Radar chart rendered something this binary's installer
+	// refuses to apply unseen — a Radar version/chart mismatch, not anything
+	// about the person or their cluster — so present it as Radar's limitation.
 	BlockCauseVerification BlockCause = "verification"
 )
 

@@ -88,7 +88,7 @@ function BlockedView({
         ? blocked.cause === 'permissions'
           ? 'Missing Kubernetes permissions'
           : blocked.cause === 'verification'
-            ? 'Radar can’t check every install change'
+            ? 'The in-app install isn’t available for this chart version'
             : 'This cluster blocked part of the install'
         : 'This cluster can’t be connected from here'
   // The browser wizard is offered only where it changes the outcome: a
