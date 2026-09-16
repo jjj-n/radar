@@ -1899,7 +1899,7 @@ export interface CloudInstallBlocked {
   // dry-run — the plan card never renders when preflight blocks, so the
   // blocked card states what Radar tried itself.
   cause?: 'permissions' | 'cluster' | 'verification'
-  attempted?: { mode: 'fresh' | 'adopt'; namespace: string; release: string }
+  attempted?: { mode: 'fresh' | 'adopt'; namespace: string; release: string; stage: 'inspect' | 'prepare' | 'preflight' }
   message: string
   blocking?: string[]
 }

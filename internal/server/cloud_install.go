@@ -197,7 +197,17 @@ type cloudInstallAttempted struct {
 	Mode      string `json:"mode"` // fresh | adopt
 	Namespace string `json:"namespace"`
 	Release   string `json:"release"`
+	// Stage is how far Radar got before stopping — inspect (reading the
+	// release's Helm state), prepare (rendering the chart), preflight (the dry
+	// run) — so the card describes what was done, not what was planned.
+	Stage string `json:"stage"`
 }
+
+const (
+	attemptStageInspect   = "inspect"
+	attemptStagePrepare   = "prepare"
+	attemptStagePreflight = "preflight"
+)
 
 // preflightBlockedMessage is the body under the blocked card's headline. The
 // blocking lines render right below it, so it says what kind of stop this is
@@ -445,8 +455,8 @@ func inspectBlocked(err error, attempted *cloudInstallAttempted) (*cloudInstallB
 	return &cloudInstallBlocked{Reason: "unsupported", Attempted: attempted, Message: err.Error()}, nil
 }
 
-func attemptedFor(plan cloudinstall.InstallPlan) *cloudInstallAttempted {
-	return &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release}
+func attemptedFor(plan cloudinstall.InstallPlan, stage string) *cloudInstallAttempted {
+	return &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release, Stage: stage}
 }
 
 func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstallFlow) (*cloudInstallBlocked, error) {
@@ -471,7 +481,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		// before reading its Helm state was refused; keep pointing at it.
 		var inspect *cloudinstall.ReleaseInspectError
 		if errors.As(err, &inspect) && inspect.Existing {
-			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release})
+			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
 		}
 		return inspectBlocked(err, nil)
 	}
@@ -497,7 +507,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		AdoptExisting: plan.Mode == cloudinstall.InstallModeAdopt,
 	})
 	if err != nil {
-		return inspectBlocked(err, attemptedFor(plan))
+		return inspectBlocked(err, attemptedFor(plan, attemptStagePrepare))
 	}
 	flow.prepared = prepared
 
@@ -509,7 +519,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		return &cloudInstallBlocked{
 			Reason:    "preflight",
 			Cause:     string(pf.Cause()),
-			Attempted: attemptedFor(plan),
+			Attempted: attemptedFor(plan, attemptStagePreflight),
 			Message:   preflightBlockedMessage(pf.Cause()),
 			Blocking:  pf.Blocking,
 		}, nil

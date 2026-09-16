@@ -170,20 +170,39 @@ function BlockingLines({ lines }: { lines: string[] }) {
 // short labeled parts, not one paragraph. The way forward is the same for
 // every cause — a cluster admin, the install page — so only "why" varies.
 function blockedPreflightCopy(blocked: CloudInstallBlocked): { title: string; tried: ReactNode; why: string } {
+  // What Radar did is told by the stage it reached, not by the plan it had:
+  // a target can be known from discovery before any chart was rendered or
+  // dry-run, and the card must not claim work that did not happen.
   const a = blocked.attempted
-  const tried = a ? (
+  const release = a && (
     <>
-      Radar prepared {a.mode === 'adopt' ? 'a Helm upgrade of your existing' : 'a fresh Helm install of'} release{' '}
-      <code className="font-mono text-[11px] text-theme-text-primary">{a.release}</code> in namespace{' '}
-      <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code> with the Cloud connection
-      enabled, and dry-ran it against the cluster as your kubeconfig identity. Nothing was changed.
-    </>
-  ) : (
-    <>
-      Radar looked for an existing Radar install — Helm keeps release state in Secrets in the target namespace — as
-      your kubeconfig identity. Nothing was changed.
+      release <code className="font-mono text-[11px] text-theme-text-primary">{a.release}</code> in namespace{' '}
+      <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code>
     </>
   )
+  const operation = a?.mode === 'adopt' ? 'a Helm upgrade of your existing' : 'a fresh Helm install of'
+  const tried =
+    !a ? (
+      <>
+        Radar looked for an existing Radar install — Helm keeps release state in Secrets in the target namespace — as
+        your kubeconfig identity. Nothing was changed.
+      </>
+    ) : a.stage === 'inspect' ? (
+      <>
+        Radar found {release} and was reading its Helm state, as your kubeconfig identity, before planning anything.
+        Nothing was changed.
+      </>
+    ) : a.stage === 'prepare' ? (
+      <>
+        Radar planned {operation} {release} with the Cloud connection enabled and was preparing the chart, as your
+        kubeconfig identity. Nothing was changed.
+      </>
+    ) : (
+      <>
+        Radar prepared {operation} {release} with the Cloud connection enabled, and dry-ran it against the cluster as
+        your kubeconfig identity. Nothing was changed.
+      </>
+    )
   switch (blocked.cause) {
     case 'permissions':
       return {
