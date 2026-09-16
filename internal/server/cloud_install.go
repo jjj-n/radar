@@ -486,19 +486,15 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 			}, nil
 		}
 		// Reading the release's Helm state was refused after discovery had run.
-		// The target is established when discovery found the release, or when
-		// a complete scan found none (a fresh install). A denial before
-		// discovery finished, or a scan that could only see the default
-		// namespace, leaves it unknown, and the card must not offer an install
-		// over a Radar that may already be there.
+		// Discovery can establish one thing on its own: the release it found,
+		// which the card may still point at to adopt. It can never establish
+		// that a fresh install is safe — a Helm release outlives a deleted or
+		// unlabeled Deployment, and the Hub's fresh command would reset its
+		// values — so with no release found the target stays unknown and the
+		// card offers no install link. Only a completed plan establishes fresh.
 		var inspect *cloudinstall.ReleaseInspectError
-		if errors.As(err, &inspect) {
-			switch {
-			case inspect.Existing:
-				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
-			case !inspect.ScanIncomplete:
-				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeFresh), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
-			}
+		if errors.As(err, &inspect) && inspect.Existing {
+			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
 		}
 		return inspectBlocked(err, nil)
 	}
