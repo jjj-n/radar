@@ -996,18 +996,28 @@ func TestInspectBlockedKeepsTheAdoptionTarget(t *testing.T) {
 	}
 }
 
-func TestInspectBlockedNeverEstablishesFreshBeforeInspectionCompletes(t *testing.T) {
-	denied := &cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", Existing: false,
-		Err: errors.New(`secrets is forbidden: User "dev" cannot list resource "secrets" in API group "" in the namespace "radar"`)}
-	// Mirrors runPrepare: discovery found no Deployment, but a Helm release
-	// can outlive one, so no target is established and no install is offered.
-	var attempted *cloudInstallAttempted
-	if denied.Existing {
-		attempted = &cloudInstallAttempted{Mode: "adopt", Namespace: denied.Namespace, Release: denied.Release, Stage: attemptStageInspect}
+func TestInspectBlockedOffersFreshOnlyWhenNothingRunsAndTheScanWasComplete(t *testing.T) {
+	err := errors.New(`secrets is forbidden: User "dev" cannot list resource "secrets" in API group "" in the namespace "radar"`)
+	// Mirrors runPrepare's switch over ReleaseInspectError.
+	pick := func(e *cloudinstall.ReleaseInspectError) *cloudInstallAttempted {
+		switch {
+		case e.Existing:
+			return &cloudInstallAttempted{Mode: "adopt", Namespace: e.Namespace, Release: e.Release, Stage: attemptStageInspect}
+		case !e.ScanIncomplete:
+			return &cloudInstallAttempted{Mode: "fresh", Namespace: e.Namespace, Release: e.Release, Stage: attemptStageInspect, ReleaseUnread: true}
+		}
+		return nil
 	}
-	blocked, err := inspectBlocked(denied, attempted)
-	if err != nil || blocked.Cause != string(cloudinstall.BlockCausePermissions) || blocked.Attempted != nil {
-		t.Fatalf("blocked=%+v err=%v; want a permissions card with no target", blocked, err)
+	complete := pick(&cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", Err: err})
+	if complete == nil || complete.Mode != "fresh" || !complete.ReleaseUnread {
+		t.Fatalf("a complete scan finding nothing offers fresh, flagged unconfirmed: %+v", complete)
+	}
+	if partial := pick(&cloudinstall.ReleaseInspectError{Namespace: "radar", Release: "radar", ScanIncomplete: true, Err: err}); partial != nil {
+		t.Fatalf("a partial scan establishes nothing: %+v", partial)
+	}
+	blocked, berr := inspectBlocked(err, complete)
+	if berr != nil || blocked.Cause != string(cloudinstall.BlockCausePermissions) || blocked.Attempted != complete {
+		t.Fatalf("blocked=%+v err=%v", blocked, berr)
 	}
 }
 

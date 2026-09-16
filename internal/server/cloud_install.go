@@ -210,6 +210,12 @@ type cloudInstallAttempted struct {
 	// plan does not establish that no Radar exists elsewhere. The card still
 	// tells what was attempted but offers no install link.
 	PartialScan bool `json:"partialScan,omitempty"`
+	// ReleaseUnread: a complete scan found no Radar running, but reading Helm's
+	// release records was refused, so a leftover release (its Deployment
+	// deleted) cannot be ruled out. A fresh install is offered with a
+	// "confirm nothing is installed first" — the harm case is a not-running
+	// leftover whose values a fresh install would reset.
+	ReleaseUnread bool `json:"releaseUnread,omitempty"`
 }
 
 const (
@@ -503,8 +509,14 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		// values — so with no release found the target stays unknown and the
 		// card offers no install link. Only a completed plan establishes fresh.
 		var inspect *cloudinstall.ReleaseInspectError
-		if errors.As(err, &inspect) && inspect.Existing {
-			return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
+		if errors.As(err, &inspect) {
+			switch {
+			case inspect.Existing:
+				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeAdopt), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect})
+			case !inspect.ScanIncomplete:
+				// Nothing running anywhere; only the release records were unread.
+				return inspectBlocked(err, &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeFresh), Namespace: inspect.Namespace, Release: inspect.Release, Stage: attemptStageInspect, ReleaseUnread: true})
+			}
 		}
 		return inspectBlocked(err, nil)
 	}

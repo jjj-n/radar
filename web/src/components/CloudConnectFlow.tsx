@@ -169,7 +169,7 @@ function blockedCopy(blocked: CloudInstallBlocked, exit: BlockedExit): { title: 
         </>
       ) : (
         <>
-          Radar found no Radar install in this cluster and was checking Helm’s release state in namespace{' '}
+          Radar found no Radar running anywhere in this cluster and was checking Helm’s release records in namespace{' '}
           <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code>, as your kubeconfig
           identity, before planning anything. Nothing was changed.
         </>
@@ -234,7 +234,14 @@ function blockedCopy(blocked: CloudInstallBlocked, exit: BlockedExit): { title: 
   if (blocked.reason === 'unsupported') {
     return { title: 'Radar can’t connect this cluster from here', tried, why: blocked.message, next: genericNext }
   }
-  const next = exit.install ? installNext : unknownNext
+  // Fresh offered on "nothing running" alone: say what was not confirmed.
+  const unconfirmedNext = (
+    <>
+      Radar found no Radar running in this cluster but couldn’t read Helm’s release records, so an admin with cluster
+      access should confirm nothing is installed before running a fresh install. {installNext}
+    </>
+  )
+  const next = exit.install ? (a?.releaseUnread ? unconfirmedNext : installNext) : unknownNext
   switch (blocked.cause) {
     case 'permissions':
       return {

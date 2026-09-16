@@ -40,15 +40,18 @@ type ReleaseInspector interface {
 // act on failing — typically the caller may not list Secrets in that
 // namespace. Existing says whether discovery had already found a Radar
 // Deployment carrying that release, so a presenter can keep pointing at the
-// release to adopt even though the plan itself could not be finished. It
-// deliberately says nothing about a fresh install: a Helm release can outlive
-// its Deployment, so only a completed inspection can establish that none
-// exists.
+// release to adopt even though the plan itself could not be finished.
+// ScanIncomplete says discovery could only see the default namespace, so
+// "no Deployment found" is not "none running anywhere". Even a complete scan
+// finding nothing is not proof that no Helm release exists — a release can
+// outlive its Deployment — which is why a presenter that offers a fresh
+// install on that basis must say so and ask for a check first.
 type ReleaseInspectError struct {
-	Namespace string
-	Release   string
-	Existing  bool
-	Err       error
+	Namespace      string
+	Release        string
+	Existing       bool
+	ScanIncomplete bool
+	Err            error
 }
 
 func (e *ReleaseInspectError) Error() string {
@@ -143,7 +146,11 @@ func ClassifyInstallPlan(
 	}
 	inspection, err := releases.InspectCloudRelease(plan.Namespace, plan.Release)
 	if err != nil {
-		return InstallPlan{}, &ReleaseInspectError{Namespace: plan.Namespace, Release: plan.Release, Existing: plan.Target != nil, Err: err}
+		return InstallPlan{}, &ReleaseInspectError{
+			Namespace: plan.Namespace, Release: plan.Release,
+			Existing: plan.Target != nil, ScanIncomplete: plan.ClusterWideScanError != nil,
+			Err: err,
+		}
 	}
 	switch inspection.State {
 	case helm.CloudReleaseNone:

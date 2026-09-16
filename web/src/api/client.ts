@@ -1904,6 +1904,9 @@ export interface CloudInstallAttempted {
   // Discovery saw only the default namespace; a fresh plan is not proof that
   // no Radar exists elsewhere.
   partialScan?: boolean
+  // A complete scan found no Radar running, but Helm's release records could
+  // not be read, so a leftover release cannot be ruled out.
+  releaseUnread?: boolean
   // GitOps only: the Hub install-page tab of the verified owning controller.
   method?: 'argocd' | 'flux' | ''
 }

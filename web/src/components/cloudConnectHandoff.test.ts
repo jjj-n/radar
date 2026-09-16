@@ -58,6 +58,12 @@ describe('exitFor — every blocked card has one exit, chosen by what Radar esta
     expect(partial.href).toContain('radar_outcome=blocked_preflight_checks_failed')
   })
 
+  it('offers a fresh install when nothing is running and only the release records were unread', () => {
+    const exit = exitFor(APP, CARD, handoffForBlocked('preflight', attempted({ stage: 'inspect', releaseUnread: true })))
+    expect(exit).toMatchObject({ install: true, label: 'Get the install command' })
+    expect(exit.href).toContain('/install?method=helm&')
+  })
+
   it('sends an unknown target to Radar Cloud, never to a guessed install', () => {
     const exit = exitFor(APP, CARD, handoffForBlocked('preflight'))
     expect(exit).toMatchObject({ install: false, label: 'Open Radar Cloud' })
