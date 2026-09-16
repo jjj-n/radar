@@ -424,20 +424,29 @@ func connectRequestFailure(err error) *cloudInstallFailure {
 // which is a retryable failure, not a refusal. What remains is the inspection
 // itself refusing: several Radars, one already connected, ownership Radar
 // will not guess at, an incompatible existing release.
-func inspectBlocked(err error) (*cloudInstallBlocked, error) {
+//
+// attempted is the plan when inspection already produced one: the handoff
+// link must keep pointing at the existing release to adopt even though the
+// dry run never ran, or the Hub would offer a fresh install over it.
+func inspectBlocked(err error, attempted *cloudInstallAttempted) (*cloudInstallBlocked, error) {
 	if cloudinstall.IsAuthorizationDenial(err) {
 		return &cloudInstallBlocked{
-			Reason:   "preflight",
-			Cause:    string(cloudinstall.BlockCausePermissions),
-			Message:  preflightBlockedMessage(cloudinstall.BlockCausePermissions),
-			Blocking: []string{err.Error()},
+			Reason:    "preflight",
+			Cause:     string(cloudinstall.BlockCausePermissions),
+			Attempted: attempted,
+			Message:   preflightBlockedMessage(cloudinstall.BlockCausePermissions),
+			Blocking:  []string{err.Error()},
 		}, nil
 	}
 	var status apierrors.APIStatus
 	if errors.As(err, &status) {
 		return nil, err
 	}
-	return &cloudInstallBlocked{Reason: "unsupported", Message: err.Error()}, nil
+	return &cloudInstallBlocked{Reason: "unsupported", Attempted: attempted, Message: err.Error()}, nil
+}
+
+func attemptedFor(plan cloudinstall.InstallPlan) *cloudInstallAttempted {
+	return &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release}
 }
 
 func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstallFlow) (*cloudInstallBlocked, error) {
@@ -458,7 +467,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 				Message: "Multiple Radar installations were found in this cluster. Use `radar cloud install --namespace <ns> --release <name>` in a terminal to pick one explicitly.",
 			}, nil
 		}
-		return inspectBlocked(err)
+		return inspectBlocked(err, nil)
 	}
 	flow.plan = plan
 
@@ -482,7 +491,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		AdoptExisting: plan.Mode == cloudinstall.InstallModeAdopt,
 	})
 	if err != nil {
-		return inspectBlocked(err)
+		return inspectBlocked(err, attemptedFor(plan))
 	}
 	flow.prepared = prepared
 
@@ -494,7 +503,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		return &cloudInstallBlocked{
 			Reason:    "preflight",
 			Cause:     string(pf.Cause()),
-			Attempted: &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release},
+			Attempted: attemptedFor(plan),
 			Message:   preflightBlockedMessage(pf.Cause()),
 			Blocking:  pf.Blocking,
 		}, nil

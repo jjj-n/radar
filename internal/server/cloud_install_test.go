@@ -8,6 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -966,5 +969,28 @@ func TestConnectRequestFailureHeadlines(t *testing.T) {
 				t.Fatalf("guidance.inspect = %+v, want the raw error", f.Guidance)
 			}
 		})
+	}
+}
+
+func TestInspectBlockedKeepsTheAdoptionTarget(t *testing.T) {
+	plan := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeAdopt, Namespace: "monitoring", Release: "radar-prod"}
+	denied := apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, "radar-cloud-token",
+		errors.New(`User "dev" cannot get resource "secrets" in API group "" in the namespace "monitoring"`))
+	blocked, err := inspectBlocked(fmt.Errorf("inspect token Secret: %w", denied), attemptedFor(plan))
+	if err != nil || blocked == nil {
+		t.Fatalf("blocked=%+v err=%v", blocked, err)
+	}
+	if blocked.Cause != string(cloudinstall.BlockCausePermissions) {
+		t.Fatalf("cause = %q, want permissions", blocked.Cause)
+	}
+	// The link the card builds must still adopt the release inspection found,
+	// not open a fresh install over it.
+	if blocked.Attempted == nil || blocked.Attempted.Mode != "adopt" || blocked.Attempted.Release != "radar-prod" || blocked.Attempted.Namespace != "monitoring" {
+		t.Fatalf("attempted = %+v, want the adoption target", blocked.Attempted)
+	}
+	// A refusal that is not about permissions keeps the target too.
+	refused, err := inspectBlocked(errors.New("Helm release \"radar-prod\" in namespace \"monitoring\" cannot be adopted: already connected"), attemptedFor(plan))
+	if err != nil || refused.Reason != "unsupported" || refused.Attempted == nil || refused.Attempted.Mode != "adopt" {
+		t.Fatalf("refused=%+v err=%v", refused, err)
 	}
 }
