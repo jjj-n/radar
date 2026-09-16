@@ -44,44 +44,30 @@ describe('planMatches', () => {
 
 describe('canConfirmDrain', () => {
   it('never enables the drain before a current plan exists', () => {
-    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
-    expect(canConfirmDrain({ plan: plan([]), nodeName: 'worker-1', options: off, loading: true, acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
-    expect(canConfirmDrain({ plan: plan([]), nodeName: 'other', options: off, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
+    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, planSupported: true })).toBe(false)
+    expect(canConfirmDrain({ plan: plan([]), nodeName: 'worker-1', options: off, loading: true, planSupported: true })).toBe(false)
+    expect(canConfirmDrain({ plan: plan([]), nodeName: 'other', options: off, loading: false, planSupported: true })).toBe(false)
   })
 
   it('keeps the drain disabled after a plan request error, even if an older plan is still around', () => {
     const p = plan([pod('web', 'evict')])
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: off, loading: false, error: 'boom', acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
-    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, error: 'boom', acknowledgedEmptyDir: false, planSupported: false })).toBe(true)
+    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: off, loading: false, error: 'boom', planSupported: true })).toBe(false)
+    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, error: 'boom', planSupported: false })).toBe(true)
   })
 
-  it('enables the drain once a matching plan is shown and no emptyDir data is at risk', () => {
-    expect(canConfirmDrain({ plan: plan([pod('web', 'evict')]), nodeName: 'worker-1', options: off, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(true)
+  it('enables the drain once a matching plan is shown', () => {
+    expect(canConfirmDrain({ plan: plan([pod('web', 'evict')]), nodeName: 'worker-1', options: off, loading: false, planSupported: true })).toBe(true)
   })
 
-  it('requires an acknowledgement when emptyDir pods would be evicted', () => {
+  it('does not gate the drain a second time when emptyDir pods would be evicted', () => {
     const p = plan([pod('cache', 'evict', { emptyDir: true })], { deleteEmptyDirData: true })
     expect(emptyDirPodsAtRisk(p).map((x) => x.name)).toEqual(['cache'])
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: true, planSupported: true })).toBe(true)
+    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: emptyDirOn, loading: false, planSupported: true })).toBe(true)
   })
 
-  it('requires the acknowledgement even when the estimate shows no emptyDir pod: the drain runs against live state', () => {
-    const p = plan([pod('web', 'evict')], { deleteEmptyDirData: true })
-    expect(emptyDirPodsAtRisk(p)).toEqual([])
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(false)
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: true, planSupported: true })).toBe(true)
-  })
-
-  it('never requires an acknowledgement while deleteEmptyDirData is off', () => {
-    const p = plan([pod('cache', 'skip', { emptyDir: true })])
-    expect(canConfirmDrain({ plan: p, nodeName: 'worker-1', options: off, loading: false, acknowledgedEmptyDir: false, planSupported: true })).toBe(true)
-  })
-
-  it('without plan support still gates emptyDir on an acknowledgement', () => {
-    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, acknowledgedEmptyDir: false, planSupported: false })).toBe(true)
-    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: false, planSupported: false })).toBe(false)
-    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: emptyDirOn, loading: false, acknowledgedEmptyDir: true, planSupported: false })).toBe(true)
+  it('confirms without a plan when the host cannot compute one', () => {
+    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: off, loading: false, planSupported: false })).toBe(true)
+    expect(canConfirmDrain({ plan: null, nodeName: 'worker-1', options: emptyDirOn, loading: false, planSupported: false })).toBe(true)
   })
 })
 
@@ -97,8 +83,6 @@ describe('DrainPlanContent', () => {
         options={off}
         onOptionsChange={noop}
         planSupported
-        acknowledgedEmptyDir={false}
-        onAcknowledgeEmptyDir={noop}
         {...props}
       />,
     )
@@ -141,17 +125,17 @@ describe('DrainPlanContent', () => {
     expect(html).not.toContain('web reason')
   })
 
-  it('renders the emptyDir acknowledgement, unchecked, naming the pods at risk', () => {
+  it('names the pods whose emptyDir data would go, and asks for no second tick', () => {
     const p = plan([pod('cache', 'evict', { emptyDir: true }), pod('web', 'evict')], { deleteEmptyDirData: true })
     const html = render({ plan: p, options: emptyDirOn })
-    expect(html).toContain('Discard the emptyDir data of 1 pod: shop/cache')
-    expect(html).toMatch(/<input[^>]*type="checkbox"[^>]*class="mt-0\.5[^"]*"[^>]*>/)
-    expect(html).not.toMatch(/<input[^>]*type="checkbox"[^>]*checked=""[^>]*class="mt-0\.5/)
+    expect(html).toContain('emptyDir data will be discarded')
+    expect(html).toContain('shop/cache')
+    expect(html).not.toMatch(/<input[^>]*type="checkbox"[^>]*class="mt-0\.5/)
   })
 
-  it('does not ask for an acknowledgement when emptyDir data is not enabled', () => {
+  it('says nothing about discarding emptyDir data while the option is off', () => {
     const html = render({ plan: plan([pod('cache', 'skip', { emptyDir: true })]) })
-    expect(html).not.toContain('Discard the emptyDir data')
+    expect(html).not.toContain('emptyDir data will be discarded')
   })
 
   it('warns when PodDisruptionBudgets could not be evaluated and does not print a zero for them', () => {
@@ -163,7 +147,7 @@ describe('DrainPlanContent', () => {
     expect(html).not.toContain('0 may block')
   })
 
-  it('asks for the acknowledgement with an honest text when the estimate shows no emptyDir pod', () => {
+  it('warns honestly when the estimate shows no emptyDir pod', () => {
     const html = render({ plan: plan([pod('web', 'evict')], { deleteEmptyDirData: true }), options: emptyDirOn })
     expect(html).toContain('No pod that would be evicted uses emptyDir right now')
   })
