@@ -193,11 +193,11 @@ type cloudInstallBlocked struct {
 func preflightBlockedMessage(cause cloudinstall.BlockCause) string {
 	switch cause {
 	case cloudinstall.BlockCausePermissions:
-		return "The identity in your kubeconfig can't perform part of this install. Ask a platform operator to connect this cluster; they'll have the permissions."
+		return "Your Kubernetes credentials lack permissions this install needs. Ask someone with those permissions to connect this cluster, or hand them the install command from the browser wizard."
 	case cloudinstall.BlockCauseVerification:
-		return "Radar checks the exact changes before it makes them, and couldn't prove them on this cluster. Connect this cluster through the browser wizard instead."
+		return "The rendered chart hides some Secret values, so Radar can't confirm every change it would make and won't make them blind. Use the browser wizard to review and run the Helm install yourself."
 	default:
-		return "Radar checked this install against the cluster before changing anything, and the cluster refused part of it. A platform operator can clear what's in the way and connect this cluster."
+		return "Something already on the cluster, or a cluster policy, refused the changes listed below. Resolve them with your platform operator, then try connecting again."
 	}
 }
 

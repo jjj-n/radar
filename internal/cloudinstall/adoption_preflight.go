@@ -583,7 +583,7 @@ func recordMutationError(result *PreflightResult, preflightName, description str
 	}
 	if isActionableKubernetesError(err) {
 		line := fmt.Sprintf("%s: %v", description, err)
-		if apierrors.IsForbidden(err) {
+		if isAuthorizationDenial(err) {
 			result.blockDenied(line)
 		} else {
 			result.blockRefused(line)
@@ -591,6 +591,26 @@ func recordMutationError(result *PreflightResult, preflightName, description str
 		return nil
 	}
 	return fmt.Errorf("%s: %s: %w", preflightName, description, err)
+}
+
+// isAuthorizationDenial tells a permission 403 from an admission webhook's:
+// both are Forbidden, but a permission denial is written by the apiserver
+// itself in one of two fixed sentences, whatever backend produced the no —
+// the authorizer's `User "x" cannot <verb> resource "r" in API group "g"`,
+// or RBAC escalation prevention's `is attempting to grant RBAC permissions
+// not currently held` when the caller may create a Role or binding but not
+// one broader than their own. Someone with more permission clears either.
+// An admission denial carries the webhook's own message, and more
+// permission would not change its answer.
+func isAuthorizationDenial(err error) bool {
+	if !apierrors.IsForbidden(err) {
+		return false
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "is attempting to grant RBAC permissions not currently held") {
+		return true
+	}
+	return strings.Contains(msg, " cannot ") && strings.Contains(msg, " resource ")
 }
 
 func isActionableKubernetesError(err error) bool {

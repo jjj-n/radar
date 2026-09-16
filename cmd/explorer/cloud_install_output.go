@@ -84,28 +84,31 @@ func printCloudPermissionFailure(
 	clusterName string,
 ) {
 	marker := cliui.New(w).Marker(cliui.Failure)
-	switch pf.Cause() {
+	cause := pf.Cause()
+	switch cause {
 	case cloudinstall.BlockCausePermissions:
-		fmt.Fprintf(w, "%s The identity in your kubeconfig is missing permissions this install needs.\n", marker)
+		fmt.Fprintf(w, "%s Your Kubernetes credentials lack permissions this install needs.\n", marker)
 	case cloudinstall.BlockCauseVerification:
-		fmt.Fprintf(w, "%s Radar could not verify the exact changes this install would make, so it will not make them blind.\n", marker)
+		fmt.Fprintf(w, "%s Radar can't check every change this install would make, so it won't make them blind.\n", marker)
 	default:
-		fmt.Fprintf(w, "%s The cluster refused part of the planned install.\n", marker)
+		fmt.Fprintf(w, "%s The cluster blocked part of the planned install.\n", marker)
 	}
 	fmt.Fprintln(w, "Blocked on:")
 	for _, detail := range pf.Blocking {
 		fmt.Fprintf(w, "  • %s\n", detail)
 	}
 	fmt.Fprintln(w)
-	switch pf.Cause() {
+	switch cause {
 	case cloudinstall.BlockCausePermissions:
-		fmt.Fprintln(w, "Radar's connected mode provisions Kubernetes impersonation RBAC, so a platform operator with those permissions must run this step.")
+		fmt.Fprintln(w, "Radar's connected mode provisions Kubernetes impersonation RBAC, so someone with those permissions has to run this step.")
+		fmt.Fprintf(w, "Ask them to run `radar cloud install` against this Kubernetes cluster (your context %q; theirs may be named differently).\n", contextName)
 	case cloudinstall.BlockCauseVerification:
-		fmt.Fprintln(w, "A platform operator can review the rendered chart and run this step by hand.")
+		// Running this command again meets the same hidden-Secret marker, so
+		// the way forward is the wizard's Helm command, reviewed by a person.
+		fmt.Fprintln(w, "The rendered chart hides some Secret values. Install from the browser wizard instead: it shows the Helm command for this cluster to review and run by hand.")
 	default:
-		fmt.Fprintln(w, "A platform operator needs to clear what the cluster refused before this step can run.")
+		fmt.Fprintln(w, "Resolve these with your platform operator, then run `radar cloud install` again.")
 	}
-	fmt.Fprintf(w, "Ask them to run `radar cloud install` against this Kubernetes cluster (your context %q; theirs may be named differently).\n", contextName)
 	fmt.Fprintf(w, "Preserve Hub %q, namespace %q, Helm release %q, Radar cluster name %q, and chart target %q.\n",
 		hubURL, prepared.Namespace(), prepared.ReleaseName(), clusterName, prepared.ChartVersion())
 }
