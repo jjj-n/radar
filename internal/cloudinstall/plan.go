@@ -36,6 +36,23 @@ type ReleaseInspector interface {
 	InspectCloudRelease(namespace, name string) (helm.CloudReleaseInspection, error)
 }
 
+// ReleaseInspectError is reading the Helm state of the release the plan would
+// act on failing — typically the caller may not list Secrets in that
+// namespace. Existing says whether discovery had already found a Radar
+// Deployment carrying that release, so a presenter can keep pointing at the
+// release to adopt even though the plan itself could not be finished.
+type ReleaseInspectError struct {
+	Namespace string
+	Release   string
+	Existing  bool
+	Err       error
+}
+
+func (e *ReleaseInspectError) Error() string {
+	return fmt.Sprintf("inspect Helm release %q in namespace %q: %v", e.Release, e.Namespace, e.Err)
+}
+func (e *ReleaseInspectError) Unwrap() error { return e.Err }
+
 // MultipleTargetsError is returned when discovery finds more than one Radar
 // installation and no explicit target selects between them. Presenters render
 // their own resolution hint (CLI: pass --namespace/--release; UI: use the CLI).
@@ -123,7 +140,7 @@ func ClassifyInstallPlan(
 	}
 	inspection, err := releases.InspectCloudRelease(plan.Namespace, plan.Release)
 	if err != nil {
-		return InstallPlan{}, fmt.Errorf("inspect Helm release %q in namespace %q: %w", plan.Release, plan.Namespace, err)
+		return InstallPlan{}, &ReleaseInspectError{Namespace: plan.Namespace, Release: plan.Release, Existing: plan.Target != nil, Err: err}
 	}
 	switch inspection.State {
 	case helm.CloudReleaseNone:

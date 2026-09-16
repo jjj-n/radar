@@ -205,18 +205,23 @@ export function CloudFunnelButton() {
   // already honors retrySafe, and the pitch must not contradict it two clicks
   // later. Leaving a live plan is the user canceling it, not a failure. Only
   // a connected flow, or no flow at all, leaves nothing to carry.
+  // Every handoff built from a status that had a plan keeps that plan's
+  // release, so no later link — footer, card, after Back or a failure —
+  // offers a fresh install over a release Radar already found.
+  const targetOf = (st: CloudInstallStatus) =>
+    st.plan ? { mode: st.plan.mode, namespace: st.plan.namespace, release: st.plan.release } : null
   const outcomeOf = (st: CloudInstallStatus): Handoff | null => {
     if (blocked) return handoffForBlocked(blocked.reason, blocked.attempted)
     if (st.state === 'failed') {
       return {
         outcome: isHandoffOutcome(st.failure?.kind) ? st.failure.kind : 'failure_kind_unknown',
         retryable: st.failure?.retrySafe ?? false,
-        target: st.plan ? { mode: st.plan.mode, namespace: st.plan.namespace, release: st.plan.release } : null,
+        target: targetOf(st),
       }
     }
     if (st.state === 'blocked' && st.blocked) return handoffForBlocked(st.blocked.reason, st.blocked.attempted)
     if (st.state === 'connected' || st.state === 'idle') return null
-    return { outcome: 'install_plan_canceled', retryable: false }
+    return { outcome: 'install_plan_canceled', retryable: false, target: targetOf(st) }
   }
 
   useEffect(() => {
