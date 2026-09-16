@@ -603,10 +603,23 @@ func recordMutationError(result *PreflightResult, preflightName, description str
 // An admission denial carries the webhook's own message, and more
 // permission would not change its answer.
 func isAuthorizationDenial(err error) bool {
-	if !apierrors.IsForbidden(err) {
+	return IsAuthorizationDenial(err)
+}
+
+// IsAuthorizationDenial reports whether err is the apiserver saying the
+// caller lacks a permission — see isAuthorizationDenial. The Forbidden status
+// is looked for through wrapping, and failing that in the message, because
+// Helm's storage driver wraps its Secret reads with an errors package whose
+// chain client-go's helpers do not always see through.
+func IsAuthorizationDenial(err error) bool {
+	if err == nil {
 		return false
 	}
 	msg := err.Error()
+	forbidden := apierrors.IsForbidden(err) || strings.Contains(msg, "is forbidden:")
+	if !forbidden {
+		return false
+	}
 	if strings.Contains(msg, "is attempting to grant RBAC permissions not currently held") {
 		return true
 	}

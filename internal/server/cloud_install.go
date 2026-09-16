@@ -44,6 +44,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	"github.com/skyhook-io/radar/internal/cloud"
 	"github.com/skyhook-io/radar/internal/cloudinstall"
 	"github.com/skyhook-io/radar/internal/contextname"
@@ -182,9 +184,19 @@ type cloudInstallBlocked struct {
 	Reason string `json:"reason"` // gitops | preflight | unsupported
 	// Cause narrows a preflight refusal to what would unblock it:
 	// permissions | cluster | verification (cloudinstall.BlockCause).
-	Cause    string   `json:"cause,omitempty"`
-	Message  string   `json:"message"`
-	Blocking []string `json:"blocking,omitempty"`
+	Cause string `json:"cause,omitempty"`
+	// Attempted is the Helm operation preflight dry-ran, so the card can say
+	// what Radar tried before saying why it stopped; the plan card that would
+	// have shown it never renders when preflight blocks.
+	Attempted *cloudInstallAttempted `json:"attempted,omitempty"`
+	Message   string                 `json:"message"`
+	Blocking  []string               `json:"blocking,omitempty"`
+}
+
+type cloudInstallAttempted struct {
+	Mode      string `json:"mode"` // fresh | adopt
+	Namespace string `json:"namespace"`
+	Release   string `json:"release"`
 }
 
 // preflightBlockedMessage is the body under the blocked card's headline. The
@@ -404,6 +416,30 @@ func connectRequestFailure(err error) *cloudInstallFailure {
 	}
 }
 
+// inspectBlocked sorts an error from the steps before the dry run — finding
+// the existing install, reading its Helm state, preparing the chart — into
+// what the person can act on. A permission denial is the same story as a
+// denied preflight and gets the same card (cause permissions, nothing
+// attempted yet). Any other Kubernetes API error is Radar failing to inspect,
+// which is a retryable failure, not a refusal. What remains is the inspection
+// itself refusing: several Radars, one already connected, ownership Radar
+// will not guess at, an incompatible existing release.
+func inspectBlocked(err error) (*cloudInstallBlocked, error) {
+	if cloudinstall.IsAuthorizationDenial(err) {
+		return &cloudInstallBlocked{
+			Reason:   "preflight",
+			Cause:    string(cloudinstall.BlockCausePermissions),
+			Message:  preflightBlockedMessage(cloudinstall.BlockCausePermissions),
+			Blocking: []string{err.Error()},
+		}, nil
+	}
+	var status apierrors.APIStatus
+	if errors.As(err, &status) {
+		return nil, err
+	}
+	return &cloudInstallBlocked{Reason: "unsupported", Message: err.Error()}, nil
+}
+
 func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstallFlow) (*cloudInstallBlocked, error) {
 	clients, contextName, err := m.backend.captureClients()
 	if err != nil {
@@ -422,7 +458,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 				Message: "Multiple Radar installations were found in this cluster. Use `radar cloud install --namespace <ns> --release <name>` in a terminal to pick one explicitly.",
 			}, nil
 		}
-		return &cloudInstallBlocked{Reason: "unsupported", Message: err.Error()}, nil
+		return inspectBlocked(err)
 	}
 	flow.plan = plan
 
@@ -446,7 +482,7 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		AdoptExisting: plan.Mode == cloudinstall.InstallModeAdopt,
 	})
 	if err != nil {
-		return &cloudInstallBlocked{Reason: "unsupported", Message: err.Error()}, nil
+		return inspectBlocked(err)
 	}
 	flow.prepared = prepared
 
@@ -456,10 +492,11 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 	}
 	if !pf.OK() {
 		return &cloudInstallBlocked{
-			Reason:   "preflight",
-			Cause:    string(pf.Cause()),
-			Message:  preflightBlockedMessage(pf.Cause()),
-			Blocking: pf.Blocking,
+			Reason:    "preflight",
+			Cause:     string(pf.Cause()),
+			Attempted: &cloudInstallAttempted{Mode: string(plan.Mode), Namespace: plan.Namespace, Release: plan.Release},
+			Message:   preflightBlockedMessage(pf.Cause()),
+			Blocking:  pf.Blocking,
 		}, nil
 	}
 

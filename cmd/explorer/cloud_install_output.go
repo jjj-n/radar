@@ -87,29 +87,38 @@ func printCloudPermissionFailure(
 	cause := pf.Cause()
 	switch cause {
 	case cloudinstall.BlockCausePermissions:
-		fmt.Fprintf(w, "%s Your Kubernetes credentials lack permissions this install needs.\n", marker)
+		fmt.Fprintf(w, "%s Your Kubernetes identity can't do this install.\n", marker)
 	case cloudinstall.BlockCauseVerification:
-		fmt.Fprintf(w, "%s This version of Radar can't confirm every change the current chart would make, so it won't install it from here.\n", marker)
+		fmt.Fprintf(w, "%s This version of Radar can't install this chart version from here.\n", marker)
 	default:
-		fmt.Fprintf(w, "%s The cluster blocked part of the planned install.\n", marker)
+		fmt.Fprintf(w, "%s The cluster blocked part of this install.\n", marker)
 	}
-	fmt.Fprintln(w, "Blocked on:")
+	operation := "a fresh Helm install of"
+	if prepared.Mode() == cloudinstall.ProvisionAdopt {
+		operation = "a Helm upgrade of your existing"
+	}
+	fmt.Fprintf(w, "\nWhat Radar tried: %s release %q in namespace %q (chart %s) with the Cloud connection enabled, dry-run against the cluster as your kubeconfig identity — the same thing helm would do. Nothing was changed.\n",
+		operation, prepared.ReleaseName(), prepared.Namespace(), prepared.ChartVersion())
+	fmt.Fprintln(w, "\nWhy it stopped:")
+	switch cause {
+	case cloudinstall.BlockCausePermissions:
+		fmt.Fprintln(w, "  The dry run was refused because your credentials lack permissions the install needs. Anyone with them can complete this exact install.")
+	case cloudinstall.BlockCauseVerification:
+		fmt.Fprintln(w, "  The chart renders something this Radar build can't check before applying, so it refuses rather than install it unseen. A limitation of this Radar, not of your cluster or your access.")
+	default:
+		fmt.Fprintln(w, "  The cluster itself refused: something already there conflicts with the install, or a policy rejects it. More permission would not change that.")
+	}
 	for _, detail := range pf.Blocking {
 		fmt.Fprintf(w, "  • %s\n", detail)
 	}
-	fmt.Fprintln(w)
-	switch cause {
-	case cloudinstall.BlockCausePermissions:
-		fmt.Fprintln(w, "Radar's connected mode provisions Kubernetes impersonation RBAC, so someone with those permissions has to run this step.")
-		fmt.Fprintf(w, "Ask them to run `radar cloud install` against this Kubernetes cluster (your context %q; theirs may be named differently).\n", contextName)
-	case cloudinstall.BlockCauseVerification:
-		// Running this command again meets the same hidden-Secret marker, so
-		// the way forward is the wizard's Helm command, reviewed by a person.
-		fmt.Fprintln(w, "Install from the browser wizard instead: it installs the same chart with Helm directly, and its command can be reviewed before running.")
-	default:
-		fmt.Fprintln(w, "Resolve these with your platform operator, then run `radar cloud install` again.")
+	fmt.Fprintln(w, "\nWhat to do:")
+	fmt.Fprintln(w, "  Have a cluster admin connect it. From the browser wizard, which sets up the same connection the way this cluster is normally deployed to — a Helm command, or a values patch for Argo CD or Flux — and shows exactly what it will change first;")
+	fmt.Fprintf(w, "  or with `radar cloud install` against this cluster (your context %q; theirs may be named differently).\n", contextName)
+	if cause == cloudinstall.BlockCauseVerification {
+		// This binary's preflight would meet the same marker for them too.
+		fmt.Fprintln(w, "  Use the wizard rather than this command: it installs the same chart with Helm directly.")
 	}
-	fmt.Fprintf(w, "Preserve Hub %q, namespace %q, Helm release %q, Radar cluster name %q, and chart target %q.\n",
+	fmt.Fprintf(w, "  Preserve Hub %q, namespace %q, Helm release %q, Radar cluster name %q, and chart target %q.\n",
 		hubURL, prepared.Namespace(), prepared.ReleaseName(), clusterName, prepared.ChartVersion())
 }
 

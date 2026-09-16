@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { type ReactNode, useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { AlertTriangle, ArrowUpRight, Check, ExternalLink, GitBranch, Info, Loader2, ShieldAlert, X } from 'lucide-react'
 import { Collapse, CollapseChevron } from '@skyhook-io/k8s-ui/components/ui/Collapse'
@@ -73,6 +73,7 @@ function BlockedView({
   signupUrl: string
   onExit: () => void
 }) {
+  const preflight = blocked.reason === 'preflight' && blocked.cause ? blockedPreflightCopy(blocked) : null
   const icon =
     blocked.reason === 'gitops' ? (
       <GitBranch className="w-4 h-4 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
@@ -81,55 +82,51 @@ function BlockedView({
     ) : (
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
     )
-  const title =
-    blocked.reason === 'gitops'
+  const title = preflight
+    ? preflight.title
+    : blocked.reason === 'gitops'
       ? 'This install is managed by GitOps'
-      : blocked.reason === 'preflight'
-        ? blocked.cause === 'permissions'
-          ? 'Missing Kubernetes permissions'
-          : blocked.cause === 'verification'
-            ? 'The in-app install isn’t available for this chart version'
-            : 'This cluster blocked part of the install'
-        : 'This cluster can’t be connected from here'
-  // The browser wizard is offered only where it changes the outcome: a
-  // person with broader permissions can run it, and a human can check what
-  // Radar could not prove. A cluster refusal would meet the wizard's Helm
-  // command the same way, and GitOps and unsupported refusals named a target
-  // a generic link cannot carry, so offering it would contradict the message.
-  const browserAlternative =
-    blocked.reason === 'preflight' && blocked.cause !== 'cluster'
-  const browserLabel =
-    blocked.cause === 'permissions'
-      ? 'Get the install command from the browser wizard →'
-      : 'Install from the browser wizard instead →'
+      : 'Radar can’t connect this cluster from here'
+  // GitOps refusals name a target and a workflow a generic signup link cannot
+  // carry (the values patch belongs in the repo that manages the install), so
+  // that card keeps its own instructions; every other stop ends at the wizard.
+  const wizard = blocked.reason !== 'gitops'
   return (
     <div className="px-8 pt-6 pb-5">
       <div className="card-inner-lg flex gap-2.5">
         {icon}
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-3">
           <div className="text-[13px] font-semibold text-theme-text-primary">{title}</div>
-          <p className="mt-1 text-[12px] leading-relaxed text-theme-text-secondary">{blocked.message}</p>
-          {blocked.blocking && blocked.blocking.length > 0 && (
-            <ul className="mt-2 space-y-1 text-[11.5px] text-theme-text-tertiary">
-              {blocked.blocking.map((line) => (
-                <li key={line} className="flex items-start gap-1.5">
-                  <span className="mt-[6px] w-1 h-1 rounded-full bg-amber-500 shrink-0" />
-                  {line}
-                </li>
-              ))}
-            </ul>
+          {preflight ? (
+            <>
+              <BlockedSection label="What Radar tried">{preflight.tried}</BlockedSection>
+              <BlockedSection label="Why it stopped">
+                {preflight.why}
+                {blocked.blocking && blocked.blocking.length > 0 && <BlockingLines lines={blocked.blocking} />}
+              </BlockedSection>
+            </>
+          ) : (
+            <>
+              <p className="text-[12px] leading-relaxed text-theme-text-secondary">{blocked.message}</p>
+              {blocked.blocking && blocked.blocking.length > 0 && <BlockingLines lines={blocked.blocking} />}
+            </>
+          )}
+          {wizard && (
+            <BlockedSection label="What to do">
+              <BlockedNextStep />
+            </BlockedSection>
           )}
         </div>
       </div>
       <div className="mt-4 flex items-center gap-4">
-        {browserAlternative && (
+        {wizard && (
           <a
             href={signupUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline underline-offset-2"
           >
-            {browserLabel}
+            Open the browser wizard (Helm, Argo CD or Flux) →
           </a>
         )}
         <button onClick={onExit} className="text-[12.5px] text-theme-text-tertiary hover:text-theme-text-primary transition-colors">
@@ -137,6 +134,89 @@ function BlockedView({
         </button>
       </div>
     </div>
+  )
+}
+
+function BlockedSection({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10.5px] font-semibold uppercase tracking-wide text-theme-text-tertiary">{label}</div>
+      <div className="mt-0.5 text-[12px] leading-relaxed text-theme-text-secondary">{children}</div>
+    </div>
+  )
+}
+
+function BlockingLines({ lines }: { lines: string[] }) {
+  return (
+    <ul className="mt-1.5 space-y-1 text-[11.5px] text-theme-text-tertiary">
+      {lines.map((line) => (
+        <li key={line} className="flex items-start gap-1.5">
+          <span className="mt-[6px] w-1 h-1 rounded-full bg-amber-500 shrink-0" />
+          {line}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+// The blocked card stands in for the plan card the person never saw, so it
+// carries the plan's facts first, then the stop, then the way forward. This
+// is a modal with their full attention; three short labeled parts beat one
+// dense paragraph. The way forward is the same for every cause — someone
+// with cluster access sets it up from the browser wizard — so only "why it
+// stopped" changes.
+function blockedPreflightCopy(blocked: CloudInstallBlocked): {
+  title: string
+  tried: ReactNode
+  why: string
+} {
+  const a = blocked.attempted
+  const tried = a ? (
+    <>
+      Radar prepared {a.mode === 'adopt' ? 'a Helm upgrade of your existing' : 'a fresh Helm install of'} release{' '}
+      <code className="font-mono text-[11px] text-theme-text-primary">{a.release}</code> in namespace{' '}
+      <code className="font-mono text-[11px] text-theme-text-primary">{a.namespace}</code> with the Cloud connection
+      enabled, and dry-ran every change against the cluster as your kubeconfig identity — the same thing{' '}
+      <code className="font-mono text-[11px]">helm</code> would do. Nothing was changed.
+    </>
+  ) : (
+    <>
+      Radar looked for an existing Radar install in this cluster before planning anything — Helm keeps release state
+      in Secrets in the target namespace — as your kubeconfig identity. Nothing was changed.
+    </>
+  )
+  switch (blocked.cause) {
+    case 'permissions':
+      return {
+        title: 'Your Kubernetes identity can’t do this install',
+        tried,
+        why: 'Your credentials lack permissions this needs; the refusals are listed below. Anyone with those permissions can complete this exact install.',
+      }
+    case 'verification':
+      return {
+        title: 'This version of Radar can’t install this chart version from here',
+        tried,
+        why: 'The chart renders something this Radar build can’t check before applying, so it refuses rather than install it unseen. A limitation of the Radar you are running, not of your cluster or your access.',
+      }
+    default:
+      return {
+        title: 'The cluster blocked part of this install',
+        tried,
+        why: 'The cluster itself refused: something already there conflicts with the install, or a policy rejects it. More permission would not change that. The refusals are listed below.',
+      }
+  }
+}
+
+// One remedy for every blocked card: the browser wizard sets the connection
+// up the way the cluster is normally deployed to, and a cluster admin can run
+// what this identity, or this Radar, could not.
+function BlockedNextStep() {
+  return (
+    <>
+      Have a cluster admin connect it from the browser wizard. It sets up the same connection the way this cluster is
+      normally deployed to — a Helm command, or a values patch for Argo CD or Flux — and shows exactly what it will
+      change first. Send them the link below.
+    </>
   )
 }
 
@@ -358,7 +438,7 @@ function ConsentRow({
   checked: boolean
   onChange: (v: boolean) => void
   tone: 'emerald' | 'amber'
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <label className="mt-3 flex items-start gap-2 cursor-pointer">

@@ -1895,8 +1895,11 @@ export interface CloudInstallFailure {
 
 export interface CloudInstallBlocked {
   reason: 'gitops' | 'preflight' | 'unsupported'
-  // Preflight only: what would unblock it.
+  // Preflight only: what would unblock it, and the Helm operation that was
+  // dry-run — the plan card never renders when preflight blocks, so the
+  // blocked card states what Radar tried itself.
   cause?: 'permissions' | 'cluster' | 'verification'
+  attempted?: { mode: 'fresh' | 'adopt'; namespace: string; release: string }
   message: string
   blocking?: string[]
 }
