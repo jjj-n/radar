@@ -1,4 +1,4 @@
-import { ApiError, type CloudInstallBlocked } from '../api/client'
+import { ApiError, type CloudInstallAttempted, type CloudInstallBlocked } from '../api/client'
 
 // The Cloud dialog's links into the Hub. utm_content names the link that was
 // clicked. After an in-app connect attempt that did not end connected, the
@@ -17,16 +17,12 @@ export const SIGNUP_QUERY = '?utm_source=radar-oss&utm_medium=app&utm_campaign=c
 export interface Handoff {
   outcome: string
   retryable: boolean
-  target?: InstallTarget | null
-}
-
-// The Hub's install page accepts a target only as an existing release to
-// adopt; a fresh install takes its defaults, which are Radar's defaults too,
-// so nothing to pass.
-export interface InstallTarget {
-  mode: 'fresh' | 'adopt'
-  namespace: string
-  release: string
+  // What Radar attempted, when it got that far — the blocked card's evidence
+  // and the input to the exit it offers.
+  target?: CloudInstallAttempted | null
+  // A prepare error's message, shown on the pitch so the reason outlives the
+  // toast that first carried it.
+  detail?: string
 }
 
 // Closed shape, not a closed list: flow failure kinds come from the server
@@ -51,7 +47,7 @@ export function handoffForPrepareError(err: unknown): Handoff {
   } else if (err instanceof TypeError) {
     outcome = 'radar_server_unreachable'
   }
-  return { outcome, retryable: true }
+  return { outcome, retryable: true, detail: err instanceof Error ? err.message : undefined }
 }
 
 // A blocked plan was refused for a stated reason and trying again reproduces
@@ -62,7 +58,7 @@ const BLOCKED_OUTCOMES: Record<CloudInstallBlocked['reason'], string> = {
   unsupported: 'blocked_unsupported_install',
 }
 
-export function handoffForBlocked(reason: CloudInstallBlocked['reason'], target?: InstallTarget | null): Handoff {
+export function handoffForBlocked(reason: CloudInstallBlocked['reason'], target?: CloudInstallAttempted | null): Handoff {
   return { outcome: BLOCKED_OUTCOMES[reason], retryable: false, target: target ?? null }
 }
 
@@ -71,28 +67,58 @@ export function signupUrlFor(appUrl: string, content: string, handoff?: Handoff 
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }
 
-// The blocked card's button deep-links the Hub's install page: signed out,
-// the Hub stashes an /install link across sign-in and replays it, so the
-// person lands on the command they were promised, adopting the release Radar
-// just found when there is one. Only the card builds this link. It is the one
-// moment Radar has just established what is in the cluster; the footer's
-// standing "or set up in the browser" link is built from whatever the last
-// attempt left behind and stays on the signup pitch, where a wrong guess about
-// the cluster cannot become a fresh install over an existing release.
-export function installUrlFor(appUrl: string, content: string, handoff?: Handoff | null): string {
+// The one exit every blocked card offers. An install-page deep link is
+// justified only where Radar established both the target and the operation:
+// a release it found (adopt, or its GitOps owner's values patch), or a fresh
+// install from a complete plan whose discovery saw the whole cluster. The
+// Hub's fresh command would reset an existing release's values and its script
+// writes the token Secret before Helm runs, so a guessed target is never
+// linked. Everywhere else the exit is Radar Cloud itself — the same
+// signup/login entry as the pitch — and the copy hands the work to an admin.
+// Signed out, the Hub stashes an /install link across sign-in only when it
+// carries a target or a method, so every install link carries one.
+export interface BlockedExit {
+  href: string
+  label: string
+  // True when href is the install page for an established target.
+  install: boolean
+}
+
+export function exitFor(appUrl: string, content: string, handoff: Handoff | null | undefined): BlockedExit {
+  const generic = { href: signupUrlFor(appUrl, content, handoff), label: 'Open Radar Cloud', install: false }
+  const t = handoff?.target
+  if (!t) return generic
+  // An unsupported refusal names its own remedy (several Radars to pick from,
+  // a pairing to recover, ownership Radar will not guess at); a release it
+  // happens to know is not an invitation to install over it.
+  if (handoff?.outcome === BLOCKED_OUTCOMES.unsupported) return generic
   const params = new URLSearchParams()
-  const target = handoff?.target
-  if (target?.mode === 'adopt') {
-    params.set('existing', '1')
-    params.set('ns', target.namespace)
-    params.set('release', target.release)
-  } else {
-    // The Hub stashes an /install link across sign-in only when it carries
-    // an intent — a target, a cluster, or a method. A fresh install has no
-    // target, so name the default tab; the person can still switch tabs.
-    params.set('method', 'helm')
+  switch (t.mode) {
+    case 'adopt':
+      params.set('existing', '1')
+      params.set('ns', t.namespace)
+      params.set('release', t.release)
+      params.set('method', 'helm')
+      return { href: installHref(appUrl, content, handoff, params), label: 'Get the install command', install: true }
+    case 'gitops':
+      if (t.method !== 'argocd' && t.method !== 'flux') return generic
+      params.set('existing', '1')
+      params.set('ns', t.namespace)
+      params.set('release', t.release)
+      params.set('method', t.method)
+      return {
+        href: installHref(appUrl, content, handoff, params),
+        label: `Get the ${t.method === 'argocd' ? 'Argo CD' : 'Flux'} values patch`,
+        install: true,
+      }
+    default:
+      if (t.partialScan) return generic
+      params.set('method', 'helm')
+      return { href: installHref(appUrl, content, handoff, params), label: 'Get the install command', install: true }
   }
-  const query = params.toString()
-  const url = `${appUrl}/install?${query ? `${query}&` : ''}${SIGNUP_QUERY.slice(1)}&utm_content=${content}`
+}
+
+function installHref(appUrl: string, content: string, handoff: Handoff | null | undefined, params: URLSearchParams): string {
+  const url = `${appUrl}/install?${params.toString()}&${SIGNUP_QUERY.slice(1)}&utm_content=${content}`
   return handoff && isHandoffOutcome(handoff.outcome) ? `${url}&radar_outcome=${handoff.outcome}` : url
 }

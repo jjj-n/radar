@@ -23,6 +23,7 @@ import (
 	"github.com/skyhook-io/radar/internal/cloudinstall"
 	"github.com/skyhook-io/radar/internal/helm"
 	"github.com/skyhook-io/radar/internal/k8s"
+	"github.com/skyhook-io/radar/pkg/subject"
 )
 
 const testToken = "rhc_SUPERSECRET_TEST_TOKEN"
@@ -1026,5 +1027,19 @@ func TestAttemptedForFlagsAFreshPlanFromAPartialScan(t *testing.T) {
 	complete := cloudinstall.InstallPlan{Mode: cloudinstall.InstallModeFresh, Namespace: "radar", Release: "radar"}
 	if got := attemptedFor(complete, attemptStagePreflight); got == nil || got.PartialScan {
 		t.Fatalf("a complete scan establishes fresh: %+v", got)
+	}
+}
+
+func TestGitOpsBlockedCarriesTheVerifiedOwnersMethod(t *testing.T) {
+	stale := cloudinstall.ControllerCandidate{Ref: subject.Ref{Group: "argoproj.io", Kind: "Application", Name: "old"}, Verification: cloudinstall.ControllerStale}
+	verified := cloudinstall.ControllerCandidate{Ref: subject.Ref{Group: "helm.toolkit.fluxcd.io", Kind: "HelmRelease", Name: "radar"}, Verification: cloudinstall.ControllerVerified}
+	// Candidate order is not confidence order: the stale Argo CD candidate
+	// comes first, and the method must still come from the verified Flux owner.
+	owner := verifiedController([]cloudinstall.ControllerCandidate{stale, verified})
+	if owner == nil || wizardMethodFor(owner.Ref) != "flux" {
+		t.Fatalf("verified owner not selected: %+v", owner)
+	}
+	if verifiedController([]cloudinstall.ControllerCandidate{stale}) != nil {
+		t.Fatal("a stale-only candidate list must not pick a method")
 	}
 }

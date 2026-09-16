@@ -194,9 +194,14 @@ type cloudInstallBlocked struct {
 }
 
 type cloudInstallAttempted struct {
-	Mode      string `json:"mode"` // fresh | adopt
+	Mode      string `json:"mode"` // fresh | adopt | gitops
 	Namespace string `json:"namespace"`
 	Release   string `json:"release"`
+	// Method is the Hub install-page tab a GitOps-managed release belongs to
+	// (argocd | flux), from its verified owning controller; empty when the
+	// owner is unverified or unrecognized, in which case the card offers the
+	// generic Radar Cloud entry rather than a values patch for the wrong tool.
+	Method string `json:"method,omitempty"`
 	// Stage is how far Radar got before stopping — inspect (reading the
 	// release's Helm state), prepare (rendering the chart), preflight (the dry
 	// run) — so the card describes what was done, not what was planned.
@@ -510,10 +515,19 @@ func (m *cloudInstallManager) runPrepare(ctx context.Context, flow *cloudInstall
 		if plan.Target != nil {
 			target = fmt.Sprintf(" (%s/%s)", plan.Target.Namespace, plan.Target.DeploymentName)
 		}
+		// Same deep link the in-cluster wizard lane builds: only a verified
+		// owner picks the tab, and only a recognized tool gets one at all.
+		attempted := &cloudInstallAttempted{Mode: string(cloudinstall.InstallModeGitOps), Namespace: plan.Namespace, Release: plan.Release, Stage: attemptStageInspect}
+		if plan.Target != nil {
+			if owner := verifiedController(plan.Target.Ownership.Controllers); owner != nil {
+				attempted.Method = wizardMethodFor(owner.Ref)
+			}
+		}
 		return &cloudInstallBlocked{
-			Reason: "gitops",
+			Reason:    "gitops",
+			Attempted: attempted,
 			Message: fmt.Sprintf(
-				"This Radar install%s is managed by a GitOps controller, so connecting it means changing its source of truth — not applying a live mutation. Run `radar cloud install` in a terminal: it generates the exact values and token-Secret handoff for your Git workflow.",
+				"This Radar install%s is managed by a GitOps controller, so connecting it means changing its source of truth — not applying a live mutation. The connection is a values change in your repository plus one command that creates the token Secret; Radar Cloud generates both, and so does `radar cloud install` in a terminal.",
 				target,
 			),
 		}, nil
