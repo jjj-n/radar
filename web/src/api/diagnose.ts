@@ -56,7 +56,7 @@ export interface RootCauseEvidence {
  * How the agent frames one cited Radar result. Roles order cards; they never
  * hide one.
  *
- * One half of a Go↔TS contract: `evidenceRoles` in internal/ai/parse.go and
+ * One half of a Go↔TS contract: `Roles` in pkg/investigation/verdict.go and
  * EVIDENCE_ROLES in components/diagnose/investigationCase.ts must list exactly
  * these roles. Change all three together.
  */
