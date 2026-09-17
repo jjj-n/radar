@@ -31,9 +31,9 @@ export function Disclosure({
 }: {
   summary: ReactNode
   children: ReactNode
-  /** Wrapper (what the old <details> carried). */
+  /** Classes for the wrapper around header and panel. */
   className?: string
-  /** Header button (what the old <summary> carried). */
+  /** Classes for the header button (layout, size and color of the summary). */
   summaryClassName?: string
   chevronClassName?: string
   /** False pins the caret to the tertiary grey regardless of the header's color. */
