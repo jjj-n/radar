@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, useMemo, useEffect, type ReactNode } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import { Play, Square, Download, FileDown, Search, X, Terminal, RotateCcw, ChevronUp, ChevronDown, ChevronRight, CaseSensitive, Regex, WrapText, Clock, Copy, Trash2, Filter, Braces, Palette, ListCollapse, Sun, Moon } from 'lucide-react'
+import { AlertTriangle, Play, Square, Download, FileDown, Search, X, Terminal, RotateCcw, ChevronUp, ChevronDown, ChevronRight, CaseSensitive, Regex, WrapText, Clock, Copy, Trash2, Filter, Braces, Palette, ListCollapse, Sun, Moon } from 'lucide-react'
 import type { LogEntry, LogLevel } from './useLogBuffer'
 import { useLogSearch } from './useLogSearch'
 import { StructuredLogLine } from './StructuredLogLine'
@@ -60,6 +60,12 @@ interface LogCoreProps {
   emptyMessage?: string
   emptyCommand?: string | null
   errorMessage?: string | null
+  /**
+   * Shown above the log body while it keeps rendering, for a stream that
+   * stopped after lines had already arrived. Replacing them would discard the
+   * last thing the workload said before it went quiet.
+   */
+  notice?: { headline: string; detail: string | null } | null
   /**
    * Hard override for the viewer palette. When set, the viewer stays pinned to
    * that mode and hides the in-viewer dark/light toggle. When undefined,
@@ -151,6 +157,7 @@ export function LogCore({
   emptyMessage = 'No logs available',
   emptyCommand,
   errorMessage,
+  notice,
   forceDark,
 }: LogCoreProps) {
   const virtuosoRef = useRef<VirtuosoHandle>(null)
@@ -971,6 +978,19 @@ export function LogCore({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {notice && (
+        <div
+          role="status"
+          className={`flex items-start gap-2 border-b px-3 py-2 text-xs ${palette.border} ${palette.toolbarBg}`}
+        >
+          <AlertTriangle className={`mt-px h-3.5 w-3.5 shrink-0 ${palette.textError}`} />
+          <span>
+            <span className={palette.textPrimary}>{notice.headline}</span>
+            {notice.detail && <span className={palette.textSecondary}> {notice.detail}</span>}
+          </span>
         </div>
       )}
 

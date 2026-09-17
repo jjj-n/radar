@@ -38,11 +38,13 @@ function setup(overrides: Partial<LogStreamControls> = {}) {
     isStreaming: false as boolean,
     connecting: true as boolean,
     streamError: null as string | null,
+    ended: null as string | null,
   }
   const ctl: LogStreamControls = {
     setIsStreaming: (v) => { state.isStreaming = v },
     setConnecting: (v) => { state.connecting = v },
     setStreamError: (v) => { state.streamError = v },
+    setStreamEnded: (v) => { state.ended = v },
     isCurrent: () => true,
     ended: { current: false },
     ...overrides,

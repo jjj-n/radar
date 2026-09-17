@@ -5,6 +5,7 @@ import { useLogBuffer } from './useLogBuffer'
 import { useLogStream } from './useLogStream'
 import { ContainerSelect, LogRangeSelect } from './LogToolbarSelects'
 import { LogCore } from './LogCore'
+import { placeStreamNotice, streamNoticeHeadline } from './stream-notice'
 import type { LogExportPayload } from '../../utils/log-export'
 import type { LogPalette } from './log-palette'
 import { Tooltip } from '../ui/Tooltip'
@@ -58,7 +59,7 @@ export function LogsViewer({
 
   const { tailLines, sinceSeconds } = parseLogRange(logRange)
   const { entries, append, set, clear } = useLogBuffer()
-  const { isStreaming, streamError, connecting, startStreaming, stopStreaming } = useLogStream()
+  const { isStreaming, streamError, streamEnded, connecting, startStreaming, stopStreaming } = useLogStream()
 
   const willAutoStream = autoStream && !!createStream
   // Tracks the container we've already auto-started for, so re-renders don't
@@ -177,11 +178,20 @@ export function LogsViewer({
   // loading state rather than the empty-logs placeholder.
   const isConnecting = willAutoStream && connecting && entries.length === 0
 
+  const streamNotice = placeStreamNotice(streamError, streamEnded, entries.length > 0)
+  const bodyNotice = streamNotice.body
+    ? [streamNoticeHeadline(streamNotice.body.tone, false), streamNotice.body.detail].filter(Boolean).join(' ')
+    : null
+  const bannerNotice = streamNotice.banner
+    ? { headline: streamNoticeHeadline(streamNotice.banner.tone, true), detail: streamNotice.banner.detail }
+    : null
+
   return (
     <LogCore
       entries={entries}
       isLoading={isLoading || isConnecting}
-      errorMessage={fetchError || (entries.length === 0 ? streamError : null)}
+      errorMessage={fetchError || bodyNotice}
+      notice={bannerNotice}
       isStreaming={isStreaming}
       onStartStream={createStream ? handleStartStreaming : undefined}
       onStopStream={handleStopStreaming}

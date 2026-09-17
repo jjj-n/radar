@@ -16,6 +16,10 @@ export function useLogStream() {
   // after a clean end. Starts true so an auto-stream viewer paints the spinner
   // immediately instead of flashing the empty state.
   const [connecting, setConnecting] = useState(true)
+  // Set when the server closes the stream cleanly. Distinct from streamError:
+  // a stream that ends is not a failure, but it is still not live, and the
+  // viewer has to be able to say so.
+  const [streamEnded, setStreamEnded] = useState<string | null>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   // EventSource fires a generic 'error' on the normal close that follows the
   // server's 'end'; this distinguishes a clean end from a real failure.
@@ -27,6 +31,7 @@ export function useLogStream() {
     setIsStreaming(false)
     setConnecting(false)
     setStreamError(null)
+    setStreamEnded(null)
   }, [])
 
   const startStreaming = useCallback((
@@ -37,12 +42,14 @@ export function useLogStream() {
     eventSourceRef.current?.close()
     endedRef.current = false
     setStreamError(null)
+    setStreamEnded(null)
     setConnecting(true)
     const es = create()
     attachLogStreamListeners(es, handlers, errorContext, {
       setIsStreaming,
       setConnecting,
       setStreamError,
+      setStreamEnded,
       isCurrent: () => eventSourceRef.current === es,
       ended: endedRef,
     })
@@ -52,5 +59,5 @@ export function useLogStream() {
   // Cleanup on unmount
   useEffect(() => () => { eventSourceRef.current?.close() }, [])
 
-  return { isStreaming, streamError, connecting, startStreaming, stopStreaming }
+  return { isStreaming, streamError, streamEnded, connecting, startStreaming, stopStreaming }
 }

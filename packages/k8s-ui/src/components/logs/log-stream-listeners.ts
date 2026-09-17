@@ -18,6 +18,8 @@ export interface LogStreamControls {
   setIsStreaming: (streaming: boolean) => void
   setConnecting: (connecting: boolean) => void
   setStreamError: (message: string | null) => void
+  /** The reason the server sent with its end event, or null while live. */
+  setStreamEnded: (reason: string | null) => void
   /**
    * False once this EventSource has been superseded. Closing or replacing one
    * (Stop, container switch, restart) can fire a late, async 'error' that would
@@ -89,6 +91,12 @@ export function attachLogStreamListeners(
     ctl.ended.current = true
     ctl.setIsStreaming(false)
     ctl.setConnecting(false)
+    let reason = ''
+    try {
+      const data = parsed(event) as { reason?: unknown } | null
+      if (typeof data?.reason === 'string') reason = data.reason
+    } catch { /* a missing or malformed reason still ends the stream */ }
+    ctl.setStreamEnded(reason)
     if (handlers.onEnd) {
       try { handlers.onEnd(parsed(event)) } catch (e) {
         console.error('Failed to parse end event:', e)

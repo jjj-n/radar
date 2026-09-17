@@ -6,6 +6,7 @@ import { useLogBuffer } from './useLogBuffer'
 import { useLogStream } from './useLogStream'
 import { ContainerSelect, LogRangeSelect } from './LogToolbarSelects'
 import { LogCore } from './LogCore'
+import { placeStreamNotice, streamNoticeHeadline } from './stream-notice'
 import type { LogExportPayload } from '../../utils/log-export'
 import type { LogPalette } from './log-palette'
 import type { WorkloadPodInfo } from '../../types'
@@ -72,7 +73,7 @@ export function WorkloadLogsViewer({ name, fetchAll, createStream, overrideDownl
 
   const { tailLines, sinceSeconds } = parseLogRange(logRange)
   const { entries, append, set, clear } = useLogBuffer()
-  const { isStreaming, streamError, connecting, startStreaming, stopStreaming } = useLogStream()
+  const { isStreaming, streamError, streamEnded, connecting, startStreaming, stopStreaming } = useLogStream()
 
   const willAutoStream = autoStream && !!createStream
   // null sentinel so the initial selectedContainer ('' = all) still arms once.
@@ -353,6 +354,14 @@ export function WorkloadLogsViewer({ name, fetchAll, createStream, overrideDownl
   // loading state rather than the empty-logs placeholder.
   const isConnecting = willAutoStream && connecting && entries.length === 0
 
+  const streamNotice = placeStreamNotice(streamError, streamEnded, entries.length > 0)
+  const bodyNotice = streamNotice.body
+    ? [streamNoticeHeadline(streamNotice.body.tone, false), streamNotice.body.detail].filter(Boolean).join(' ')
+    : null
+  const bannerNotice = streamNotice.banner
+    ? { headline: streamNoticeHeadline(streamNotice.banner.tone, true), detail: streamNotice.banner.detail }
+    : null
+
   return (
     <LogCore
       entries={filteredEntries}
@@ -368,7 +377,8 @@ export function WorkloadLogsViewer({ name, fetchAll, createStream, overrideDownl
       showPodName
       emptyMessage={emptyMessage || (pods.length === 0 ? 'No pods found' : 'No logs available')}
       emptyCommand={emptyCommand}
-      errorMessage={fetchError || (entries.length === 0 ? streamError : null)}
+      errorMessage={fetchError || bodyNotice}
+      notice={bannerNotice}
       forceDark={forceDark}
     />
   )
