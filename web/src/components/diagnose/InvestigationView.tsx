@@ -176,14 +176,14 @@ export function InvestigationView({
   onOpenTimeline?: (scope: InvestigationTimelineScope) => void;
 }) {
   const { kind, namespace, name } = run;
-  // Apply is off for hosted agents (read-only server-side). Keyed on the selected
-  // agent, which matches run.agent unless a deployment mixes hosted + local agents.
+  // Apply follows the selected agent's declared capability, which matches
+  // run.agent unless a deployment mixes hosted + local agents.
   const {
     refreshRuns,
     openInvestigation,
     startError,
     dismissError,
-    hosted,
+    canApply,
     agents,
   } = useDiagnose();
   const explanationEnabled = supportsAssessmentExplanation(
@@ -1345,8 +1345,7 @@ export function InvestigationView({
   );
   // While the first assessment is still running the pane keeps the story
   // shape, so the page fills in rather than rearranging when the verdict lands.
-  const storyShell =
-    !hosted && !currentAssessment && lastTurn?.status === "running";
+  const storyShell = !currentAssessment && lastTurn?.status === "running";
   const currentAssessmentEvidenceConflict =
     currentAssessment?.diagnosis?.healthy === true &&
     investigationEvidenceConflictsWithHealthy(projection);
@@ -1660,7 +1659,7 @@ export function InvestigationView({
               lastApplyAttemptIdx,
               localApplyAttemptAssessmentIdx,
               interactionsBlocked,
-              hosted,
+              canApply,
               hasNewerEvidence: hasEvidenceCollectedAfterAssessment,
             })
               ? requestApply

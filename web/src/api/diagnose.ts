@@ -15,6 +15,10 @@ export interface AgentInfo {
   hosted?: boolean;
   /** Hosted backends opt in only when they implement assessment-bound, tool-free explanations. */
   assessmentExplanations?: boolean;
+  /** The backend performs a user-confirmed Apply turn. Absent means read-only. */
+  apply?: boolean;
+  /** The backend re-checks the resource after an Apply. Absent means it does not. */
+  verification?: boolean;
 }
 
 export interface AgentsResponse {
