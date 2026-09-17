@@ -607,6 +607,18 @@ func TestParse_AnswerWithOnlyAQuotedFenceIsProse(t *testing.T) {
 	}
 }
 
+// A follow-up that revises nothing may write only revises_assessment and a
+// product's own fields: that is still the verdict block, not quoted prose.
+func TestParse_MinimalFollowUpBlockIsTheVerdict(t *testing.T) {
+	p := Parse("```json\n{\"revises_assessment\": false, \"cause_summary\": \"\"}\n```\n\nA PDB limits voluntary disruption.")
+	if p.Verdict.Report != "A PDB limits voluntary disruption." || p.Verdict.RevisesAssessment || p.Verdict.Structured() {
+		t.Fatalf("minimal follow-up block misread: %+v", p.Verdict)
+	}
+	if _, ok := p.Extensions["cause_summary"]; !ok {
+		t.Fatalf("extension lost with the block: %v", p.Extensions)
+	}
+}
+
 // A product may ask for fields of its own in the same block; the contract
 // parser hands them back untouched and never mistakes them for its own.
 func TestParse_HandsBackExtensionFields(t *testing.T) {

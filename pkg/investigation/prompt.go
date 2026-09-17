@@ -35,7 +35,6 @@ func IsReadOnlyTool(tool string) bool {
 	return slices.Contains(ReadOnlyTools, NormalizeToolName(tool))
 }
 
-// IsWriteTool reports whether tool is one of the mutating Radar tools.
 func IsWriteTool(tool string) bool {
 	return slices.Contains(WriteTools, NormalizeToolName(tool))
 }

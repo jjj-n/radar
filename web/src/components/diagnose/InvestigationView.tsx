@@ -183,7 +183,10 @@ export function InvestigationView({
   const runAgent = agents.find((agent) => agent.name === run.agent);
   const explanationEnabled = supportsAssessmentExplanation(runAgent);
   const canApply = runAgent?.apply === true;
-  const verifiesAfterApply = runAgent?.verification === true;
+  // Read through a ref by the stream callback, which lives as long as the
+  // run and would otherwise keep the value from before the agents loaded.
+  const verifiesAfterApplyRef = useRef(false);
+  verifiesAfterApplyRef.current = runAgent?.verification === true;
   // Investigate again means look again, so it asks for a new session explicitly and only
   // carries the issue forward — being handed the previous answer is the one
   // thing someone clicking this doesn't want.
@@ -536,7 +539,7 @@ export function InvestigationView({
               // read-only verification turn; hold the controls through that
               // adjacent event so there is no idle flash. A backend that
               // declares no verification sends no such turn, so nothing waits.
-              if (effects.verificationPending && verifiesAfterApply)
+              if (effects.verificationPending && verifiesAfterApplyRef.current)
                 setVerificationPending(true);
             }
             if (live || (isApply && applyStartedLive)) refreshRuns();

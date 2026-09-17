@@ -34,7 +34,10 @@ var roles = func() map[EvidenceRole]struct{} {
 	return m
 }()
 
-var verdictFields = []string{"root_cause", "summary", "healthy", "inconclusive", "steps", "evidence", "remediation"}
+// A non-revising follow-up may answer with nothing but revises_assessment,
+// so that field marks a verdict block too; without it the block would read as
+// quoted prose and its extension fields would be lost.
+var verdictFields = []string{"root_cause", "summary", "healthy", "inconclusive", "steps", "evidence", "remediation", "revises_assessment"}
 
 // Parsed is the model's final text as read, before binding. Citations are the
 // untrusted part: the refs the agent asked to cite. They never cross an API
