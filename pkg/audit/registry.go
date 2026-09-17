@@ -293,7 +293,7 @@ var CheckRegistry = map[string]CheckMeta{
 		ID:          "orphanConfigMapSecret",
 		Title:       "Unused ConfigMap or Secret",
 		Category:    CategoryEfficiency,
-		Description: "No workload, Ingress, or supported controller configuration references this ConfigMap or Secret. Radar only sees the namespaces it can read and the controller kinds it parses, so a live consumer may exist outside that view.",
+		Description: "No workload, Ingress, or supported controller configuration references this ConfigMap or Secret. Radar checks the reference kinds it understands; a consumer that reads it by name from code or from an unsupported controller would not be seen.",
 		Remediation: "Confirm nothing outside Radar's view still uses it, then either add the missing reference from the workload, Ingress, or controller that should consume it, or delete it. Keep a copy of a Secret before deleting it - its contents cannot be recovered.",
 		References:  []Reference{refConfigMaps, refSecrets},
 	},
