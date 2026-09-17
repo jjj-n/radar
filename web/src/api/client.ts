@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AppHistory,
   AppRow,
@@ -2477,11 +2477,11 @@ function useGoneSuppression(identity: string) {
     setState(initialGoneState);
   }, [identity]);
 
-  const observe = (error: unknown) => {
+  const observe = useCallback((error: unknown) => {
     setState((prev) =>
       nextGoneState(prev, { type: "settled", isGone: isNotFoundError(error), now: Date.now() }),
     );
-  };
+  }, []);
 
   // Wake up once the cooldown is over so the query re-enables and probes.
   const suppressedUntil = state.suppressedUntil;
@@ -2507,11 +2507,11 @@ export function useResource<T>(
   options?: { enabled?: boolean; refetchInterval?: number | false },
 ) {
   const identity = `${kind}/${namespace}/${name}/${group ?? ""}`;
-  const gone = useGoneSuppression(identity);
+  const { quiet: goneQuiet, observe: observeGone } = useGoneSuppression(identity);
   const query = useQuery<ResourceWithRelationships<T>>({
     queryKey: ["resource", kind, namespace, name, group],
     queryFn: () => fetchResourceWithRelationships<T>(kind, namespace, name, group),
-    enabled: (options?.enabled ?? true) && Boolean(kind && name) && !gone.quiet, // namespace can be empty for cluster-scoped resources
+    enabled: (options?.enabled ?? true) && Boolean(kind && name) && !goneQuiet, // namespace can be empty for cluster-scoped resources
     refetchInterval: options?.refetchInterval,
     // Kind still completing its initial sync: stay in loading and poll until
     // it becomes readable instead of erroring out (deep links during startup).
@@ -2527,7 +2527,7 @@ export function useResource<T>(
   });
 
   const queryError = query.error;
-  useEffect(() => { gone.observe(queryError); }, [queryError, identity]);
+  useEffect(() => { observeGone(queryError); }, [queryError, identity, observeGone]);
 
   // Extract resource and relationships from the response
   return {
@@ -2547,11 +2547,11 @@ export function useResourceWithRelationships<T>(
   group?: string,
 ) {
   const identity = `${kind}/${namespace}/${name}/${group ?? ""}`;
-  const gone = useGoneSuppression(identity);
+  const { quiet: goneQuiet, observe: observeGone } = useGoneSuppression(identity);
   const query = useQuery<ResourceWithRelationships<T>>({
     queryKey: ["resource", kind, namespace, name, group],
     queryFn: () => fetchResourceWithRelationships<T>(kind, namespace, name, group),
-    enabled: Boolean(kind && name) && !gone.quiet,
+    enabled: Boolean(kind && name) && !goneQuiet,
     // Deep-linked detail views can mount while the kind's informer is still
     // completing its initial sync: keep polling instead of erroring out.
     retry: (failureCount, error) => {
@@ -2566,7 +2566,7 @@ export function useResourceWithRelationships<T>(
   });
 
   const queryError = query.error;
-  useEffect(() => { gone.observe(queryError); }, [queryError, identity]);
+  useEffect(() => { observeGone(queryError); }, [queryError, identity, observeGone]);
 
   return query;
 }
