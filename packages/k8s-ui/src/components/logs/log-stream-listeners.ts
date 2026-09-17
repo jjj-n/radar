@@ -33,10 +33,13 @@ function parsed(event: Event): unknown {
 }
 
 /**
- * Wires the SSE event listeners onto `es`. Split out of useLogStream so the
- * event-to-state mapping can be exercised directly: the interesting cases are
- * orderings (a failure before or after 'connected', an error after a clean
- * 'end') and they are invisible to a test of the parsing helpers alone.
+ * Wires the SSE event listeners onto `es`.
+ *
+ * Kept apart from the hook that owns the state so the event-to-state mapping
+ * can be exercised directly. What decides correctness here is ordering: a
+ * failure arriving before or after 'connected', an error after a clean 'end',
+ * a late event from a stream that has already been replaced. None of that is
+ * reachable from a test of the parsing helpers alone.
  */
 export function attachLogStreamListeners(
   es: EventSource,
