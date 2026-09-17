@@ -224,6 +224,10 @@ func TestExplanationPrompt(t *testing.T) {
 	if strings.Contains(prompt, "root_cause_evidence_refs") {
 		t.Fatal("explanation must not request fresh evidence refs")
 	}
+	conditional := ExplanationPrompt(Verdict{RootCause: "x", Steps: []Step{{Text: "Roll back", Kind: StepMitigate, Precondition: "revision 7 still authenticates"}}, Remediation: []string{"Roll back"}})
+	if !strings.Contains(conditional, `"Roll back (only if revision 7 still authenticates)"`) {
+		t.Fatalf("a step's precondition must reach the explaining model: %s", conditional)
+	}
 	bare := ExplanationPrompt(Verdict{RootCause: "x"})
 	if strings.Contains(bare, `"evidenceNotes"`) || strings.Contains(bare, `"ruledOut"`) {
 		t.Fatalf("empty case must not appear in the prompt: %s", bare)

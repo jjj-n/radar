@@ -117,13 +117,17 @@ func Parse(text string) Parsed {
 	}
 	// The story follows the verdict and may quote a patch or a spec in a json
 	// fence of its own, so the verdict is the last block that carries a
-	// verdict field, not merely the last block.
-	last := locs[len(locs)-1]
+	// verdict field, not merely the last block; an answer whose fences carry
+	// none is prose quoting something, and keeps every fence.
+	var last []int
 	for i := len(locs) - 1; i >= 0; i-- {
 		if isVerdictBlock(text[locs[i][2]:locs[i][3]]) {
 			last = locs[i]
 			break
 		}
+	}
+	if last == nil {
+		return p
 	}
 	var parsed struct {
 		Healthy           *bool           `json:"healthy"`

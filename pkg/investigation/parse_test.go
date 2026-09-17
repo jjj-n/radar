@@ -597,6 +597,16 @@ func TestParseCaseRequestReportsAMalformedEvidenceEnvelope(t *testing.T) {
 	}
 }
 
+// A fence that carries no verdict field is the agent quoting something; the
+// answer is prose and keeps it, and nothing in it is handed back as a field.
+func TestParse_AnswerWithOnlyAQuotedFenceIsProse(t *testing.T) {
+	text := "Set it like this:\n\n```json\n{\"spec\": {\"replicas\": 2}}\n```\n\nThen wait."
+	p := Parse(text)
+	if p.Verdict.Report != text || p.Verdict.Notes != "" || p.Extensions != nil || p.Verdict.Structured() {
+		t.Fatalf("a quoted fence was read as the verdict: %+v %v", p.Verdict, p.Extensions)
+	}
+}
+
 // A product may ask for fields of its own in the same block; the contract
 // parser hands them back untouched and never mistakes them for its own.
 func TestParse_HandsBackExtensionFields(t *testing.T) {

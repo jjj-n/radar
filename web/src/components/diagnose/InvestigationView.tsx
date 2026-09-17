@@ -176,19 +176,14 @@ export function InvestigationView({
   onOpenTimeline?: (scope: InvestigationTimelineScope) => void;
 }) {
   const { kind, namespace, name } = run;
-  // Apply follows the selected agent's declared capability, which matches
-  // run.agent unless a deployment mixes hosted + local agents.
-  const {
-    refreshRuns,
-    openInvestigation,
-    startError,
-    dismissError,
-    canApply,
-    agents,
-  } = useDiagnose();
-  const explanationEnabled = supportsAssessmentExplanation(
-    agents.find((agent) => agent.name === run.agent),
-  );
+  const { refreshRuns, openInvestigation, startError, dismissError, agents } =
+    useDiagnose();
+  // Capabilities are the declared ones of the agent that ran this run, not
+  // the picker's: a reopened run keeps the backend it was made with.
+  const runAgent = agents.find((agent) => agent.name === run.agent);
+  const explanationEnabled = supportsAssessmentExplanation(runAgent);
+  const canApply = runAgent?.apply === true;
+  const verifiesAfterApply = runAgent?.verification === true;
   // Investigate again means look again, so it asks for a new session explicitly and only
   // carries the issue forward — being handed the previous answer is the one
   // thing someone clicking this doesn't want.
@@ -536,10 +531,13 @@ export function InvestigationView({
               });
               pendingApplyStartedLiveRef.current = false;
               if (effects.refreshClusterState) refreshClusterState();
-              // A successful apply is one compound server-owned job. Its next
-              // durable event is the automatic read-only verification turn; hold
-              // the controls through that adjacent event so there is no idle flash.
-              if (effects.verificationPending) setVerificationPending(true);
+              // On a backend that verifies, a successful apply is one compound
+              // server-owned job whose next durable event is the automatic
+              // read-only verification turn; hold the controls through that
+              // adjacent event so there is no idle flash. A backend that
+              // declares no verification sends no such turn, so nothing waits.
+              if (effects.verificationPending && verifiesAfterApply)
+                setVerificationPending(true);
             }
             if (live || (isApply && applyStartedLive)) refreshRuns();
             break;

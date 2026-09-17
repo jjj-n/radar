@@ -49,7 +49,9 @@ func RefMarker(ref string) string { return refMarkerPrefix + ref + refMarkerSuff
 // SplitRefMarker removes a leading ref marker from a tool result before the
 // result is capped or persisted, returning the clean text and the ref. A
 // malformed marker, or one that is not at the very start, is ordinary result
-// text: a payload-authored lookalike must never become a citable ref.
+// text. The split authenticates nothing: a well-formed marker at the start of
+// a payload from any MCP server comes out as a ref, and only the issuer's
+// check against what it recorded makes it provenance.
 func SplitRefMarker(result string) (clean, ref string) {
 	if !strings.HasPrefix(result, refMarkerPrefix) {
 		return result, ""

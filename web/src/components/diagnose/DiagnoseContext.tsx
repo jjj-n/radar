@@ -69,7 +69,6 @@ interface DiagnoseCtx {
   setupState: DiagnoseSetup; // readiness for the setup nudge (see DiagnoseSetup)
   agentLabel: string; // label of the selected agent, e.g. "Claude Code"
   hosted: boolean; // selected agent runs on the host's backend, not this machine
-  canApply: boolean; // the selected agent's backend declares an Apply turn
   agents: AgentInfo[]; // supported agents detected on PATH (for the picker)
   selectedAgent: string; // name of the chosen backend ("claude"/"codex")
   setSelectedAgent: (name: string) => void;
@@ -527,7 +526,6 @@ function RoutedDiagnoseProvider({
     : (selectedAgentInfo?.profiles?.[0] ?? profile);
   const agentLabel = agentLabelFor(selectedAgent, selectedAgentInfo?.label);
   const hosted = !!selectedAgentInfo?.hosted;
-  const canApply = selectedAgentInfo?.apply === true;
   // Hosted Radar uses its existing per-user disclosure surface and supplies its
   // own copy. Local agents use the execution profile as the consent contract.
   const consentSurface = hosted
@@ -1012,7 +1010,6 @@ function RoutedDiagnoseProvider({
     setupState,
     agentLabel,
     hosted,
-    canApply,
     agents,
     selectedAgent,
     setSelectedAgent,
