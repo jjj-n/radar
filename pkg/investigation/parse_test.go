@@ -596,3 +596,18 @@ func TestParseCaseRequestReportsAMalformedEvidenceEnvelope(t *testing.T) {
 		t.Fatal("no evidence field at all is not a malformed one")
 	}
 }
+
+// A product may ask for fields of its own in the same block; the contract
+// parser hands them back untouched and never mistakes them for its own.
+func TestParse_HandsBackExtensionFields(t *testing.T) {
+	p := Parse(verdictJSON(`"root_cause":"x","cause_summary":"The ConfigMap points at a Service that no longer exists","confidence":0.4`))
+	if len(p.Extensions) != 1 || string(p.Extensions["cause_summary"]) != `"The ConfigMap points at a Service that no longer exists"` {
+		t.Fatalf("extensions = %v", p.Extensions)
+	}
+	if p.Verdict.Confidence == nil || *p.Verdict.Confidence != 0.4 {
+		t.Fatalf("a contract field must not be handed back as an extension: %+v", p.Verdict)
+	}
+	if p := Parse(verdictJSON(`"root_cause":"x"`)); p.Extensions != nil {
+		t.Fatalf("no extensions must read as nil, got %v", p.Extensions)
+	}
+}

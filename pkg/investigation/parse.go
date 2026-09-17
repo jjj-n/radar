@@ -39,9 +39,15 @@ var verdictFields = []string{"root_cause", "summary", "healthy", "inconclusive",
 // Parsed is the model's final text as read, before binding. Citations are the
 // untrusted part: the refs the agent asked to cite. They never cross an API
 // boundary; Bind replaces them with server-authored provenance.
+//
+// Extensions are the verdict block's fields outside the contract, handed back
+// unread. A product that asks the model for fields of its own (a notification
+// line, say) states them in its prompt extension and reads them here, so the
+// block stays one object the model writes once.
 type Parsed struct {
-	Verdict   Verdict
-	Citations Citations
+	Verdict    Verdict
+	Citations  Citations
+	Extensions map[string]json.RawMessage
 }
 
 // Citations is the agent's citation request, opaque to callers. A product
@@ -136,9 +142,11 @@ func Parse(text string) Parsed {
 		Steps             json.RawMessage `json:"steps"`
 		RevisesAssessment *bool           `json:"revises_assessment"`
 	}
-	if json.Unmarshal([]byte(text[last[2]:last[3]]), &parsed) != nil {
+	block := []byte(text[last[2]:last[3]])
+	if json.Unmarshal(block, &parsed) != nil {
 		return p
 	}
+	p.Extensions = extensionFields(block)
 	if parsed.Healthy != nil {
 		d.Healthy = *parsed.Healthy
 	}
@@ -229,6 +237,29 @@ func Parse(text string) Parsed {
 		}
 	}
 	return p
+}
+
+var contractFields = map[string]struct{}{
+	"healthy": {}, "inconclusive": {}, "root_cause": {}, "root_cause_evidence_refs": {},
+	"evidence": {}, "ruled_out": {}, "remediation": {}, "recommended_index": {},
+	"recommended_reason": {}, "confidence": {}, "summary": {}, "certainty": {},
+	"unresolved": {}, "steps": {}, "revises_assessment": {},
+}
+
+func extensionFields(block []byte) map[string]json.RawMessage {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(block, &fields) != nil {
+		return nil
+	}
+	for name := range fields {
+		if _, contract := contractFields[name]; contract {
+			delete(fields, name)
+		}
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return fields
 }
 
 // parseStepsIndexed also returns, for each kept step, its index in the
