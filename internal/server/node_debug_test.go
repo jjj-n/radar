@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -70,13 +72,13 @@ func TestNodeDebugCleanupIdentity(t *testing.T) {
 		name, query    string
 		upstream, want int
 	}{
-		{"exact pod", "namespace=default&podName=pod-a&uid=uid-a", 200, 200},
-		{"already gone", "namespace=default&podName=pod-a&uid=uid-a", 404, 200},
-		{"UID conflict", "namespace=default&podName=pod-a&uid=uid-a", 409, 409},
-		{"forbidden", "namespace=default&podName=pod-a&uid=uid-a", 403, 403},
+		{"exact pod", "namespace=default&podName=pod-a&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 200, 200},
+		{"already gone", "namespace=default&podName=pod-a&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 404, 200},
+		{"UID conflict", "namespace=default&podName=pod-a&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 409, 409},
+		{"forbidden", "namespace=default&podName=pod-a&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 403, 403},
 		{"missing all", "", 0, 400},
-		{"missing namespace", "podName=pod-a&uid=uid-a", 0, 400},
-		{"missing name", "namespace=default&uid=uid-a", 0, 400},
+		{"missing namespace", "podName=pod-a&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 0, 400},
+		{"missing name", "namespace=default&uid=fdde0bca-d4df-4263-bf04-88ce73cc90c1", 0, 400},
 		{"missing UID", "namespace=default&podName=pod-a", 0, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,7 +92,7 @@ func TestNodeDebugCleanupIdentity(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&options); err != nil {
 					t.Error(err)
 				}
-				if options.Preconditions == nil || options.Preconditions.UID == nil || *options.Preconditions.UID != "uid-a" {
+				if options.Preconditions == nil || options.Preconditions.UID == nil || *options.Preconditions.UID != "fdde0bca-d4df-4263-bf04-88ce73cc90c1" {
 					t.Errorf("missing precondition: %+v", options)
 				}
 				reason := map[int]metav1.StatusReason{404: metav1.StatusReasonNotFound, 409: metav1.StatusReasonConflict, 403: metav1.StatusReasonForbidden}[tc.upstream]
@@ -109,6 +111,42 @@ func TestNodeDebugCleanupIdentity(t *testing.T) {
 			}
 			if requests != wantRequests {
 				t.Fatalf("requests: got %d, want %d", requests, wantRequests)
+			}
+		})
+	}
+}
+
+func TestNodeDebugCleanupRejectsMalformedIdentityBeforeClientAccess(t *testing.T) {
+	const uid = "fdde0bca-d4df-4263-bf04-88ce73cc90c1"
+	for _, tc := range []struct{ name, namespace, podName, uid string }{
+		{"namespace whitespace", " default", "pod", uid},
+		{"namespace uppercase", "Default", "pod", uid},
+		{"namespace slash", "team/a", "pod", uid},
+		{"namespace too long", strings.Repeat("a", 64), "pod", uid},
+		{"pod whitespace", "default", "pod ", uid},
+		{"pod slash", "default", "a/b", uid},
+		{"pod uppercase", "default", "Pod", uid},
+		{"pod too long", "default", strings.Repeat("a", 254), uid},
+		{"UID whitespace", "default", "pod", " " + uid},
+		{"UID malformed", "default", "pod", "not-a-uuid"},
+		{"UID URN", "default", "pod", "urn:uuid:" + uid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			router := nodeDebugTestRouter(t, func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(http.StatusOK) })
+			query := url.Values{"namespace": {tc.namespace}, "podName": {tc.podName}, "uid": {tc.uid}}.Encode()
+			for _, noClient := range []bool{false, true} {
+				if noClient {
+					k8s.SetTestClient(nil)
+				}
+				response := httptest.NewRecorder()
+				router.ServeHTTP(response, httptest.NewRequest(http.MethodDelete, "/nodes/node-a/debug?"+query, nil))
+				if response.Code != http.StatusBadRequest {
+					t.Fatalf("noClient=%v: got %d %s", noClient, response.Code, response.Body)
+				}
+			}
+			if requests != 0 {
+				t.Fatalf("invalid identity issued %d Kubernetes requests", requests)
 			}
 		})
 	}

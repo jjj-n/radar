@@ -719,7 +719,6 @@ func (s *Server) handleNodeDebug(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleNodeDebugCleanup deletes the exact debug pod created by a terminal
 func (s *Server) handleNodeDebugCleanup(w http.ResponseWriter, r *http.Request) {
 	if !s.requireConnected(w) {
 		return
@@ -734,8 +733,8 @@ func (s *Server) handleNodeDebugCleanup(w http.ResponseWriter, r *http.Request) 
 	namespace := r.URL.Query().Get("namespace")
 	podName := r.URL.Query().Get("podName")
 	uid := r.URL.Query().Get("uid")
-	if namespace == "" || podName == "" || uid == "" {
-		s.writeError(w, http.StatusBadRequest, "debug pod namespace, name and UID are required")
+	if err := k8score.ValidateNodeDebugPodIdentity(namespace, podName, types.UID(uid)); err != nil {
+		s.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	auth.AuditLog(r, namespace, podName)

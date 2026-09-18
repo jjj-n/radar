@@ -5,10 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apivalidation "k8s.io/apimachinery/pkg/api/validation"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -183,11 +187,30 @@ func DeleteNodeDebugPods(ctx context.Context, client kubernetes.Interface, nodeN
 	return errors.Join(errs...)
 }
 
+// ValidateNodeDebugPodIdentity allows callers to reject malformed identities before
+// accessing the cluster. Values are never normalized: cleanup must preserve the
+// exact identity returned by creation, including the API server's UUID-form UID.
+func ValidateNodeDebugPodIdentity(namespace, podName string, uid types.UID) error {
+	if namespace == "" || podName == "" || uid == "" {
+		return fmt.Errorf("debug pod namespace, name and UID are required")
+	}
+	if errs := apivalidation.ValidateNamespaceName(namespace, false); len(errs) > 0 {
+		return fmt.Errorf("invalid debug pod namespace: %s", strings.Join(errs, "; "))
+	}
+	if errs := apivalidation.NameIsDNSSubdomain(podName, false); len(errs) > 0 {
+		return fmt.Errorf("invalid debug pod name: %s", strings.Join(errs, "; "))
+	}
+	if len(uid) != 36 || uuid.Validate(string(uid)) != nil {
+		return fmt.Errorf("invalid debug pod UID: must be a hyphenated UUID")
+	}
+	return nil
+}
+
 // DeleteNodeDebugPod deletes only the pod identified by namespace, name and UID.
 // The UID precondition protects replacement pods, including after a context switch.
 func DeleteNodeDebugPod(ctx context.Context, client kubernetes.Interface, namespace, podName string, uid types.UID) error {
-	if namespace == "" || podName == "" || uid == "" {
-		return fmt.Errorf("debug pod namespace, name and UID are required")
+	if err := ValidateNodeDebugPodIdentity(namespace, podName, uid); err != nil {
+		return err
 	}
 	if client == nil {
 		return fmt.Errorf("kubernetes client not initialized")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -79,7 +80,7 @@ func TestDeleteNodeDebugPod(t *testing.T) {
 				if err := json.NewDecoder(r.Body).Decode(&options); err != nil {
 					t.Error(err)
 				}
-				if options.Preconditions == nil || options.Preconditions.UID == nil || *options.Preconditions.UID != "uid-a" {
+				if options.Preconditions == nil || options.Preconditions.UID == nil || *options.Preconditions.UID != "fdde0bca-d4df-4263-bf04-88ce73cc90c1" {
 					t.Errorf("missing UID precondition: %+v", options)
 				}
 				w.Header().Set("Content-Type", "application/json")
@@ -91,7 +92,7 @@ func TestDeleteNodeDebugPod(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			err = DeleteNodeDebugPod(context.Background(), client, "default", "session-a", "uid-a")
+			err = DeleteNodeDebugPod(context.Background(), client, "default", "session-a", "fdde0bca-d4df-4263-bf04-88ce73cc90c1")
 			switch tc.status {
 			case http.StatusOK, http.StatusNotFound:
 				if err != nil {
@@ -121,5 +122,54 @@ func TestDeleteNodeDebugPodRequiresIdentity(t *testing.T) {
 				t.Fatalf("expected identity validation, got %v", err)
 			}
 		})
+	}
+}
+
+func TestDeleteNodeDebugPodRejectsMalformedIdentity(t *testing.T) {
+	const uid = "fdde0bca-d4df-4263-bf04-88ce73cc90c1"
+	for _, tc := range []struct{ name, namespace, podName, uid string }{
+		{"namespace whitespace", " default", "pod", uid},
+		{"namespace uppercase", "Default", "pod", uid},
+		{"namespace dotted", "team.a", "pod", uid},
+		{"namespace too long", strings.Repeat("a", 64), "pod", uid},
+		{"pod slash", "default", "a/b", uid},
+		{"pod percent", "default", "pod%2Fa", uid},
+		{"pod uppercase", "default", "Pod", uid},
+		{"pod too long", "default", strings.Repeat("a", 254), uid},
+		{"UID whitespace", "default", "pod", " " + uid},
+		{"UID malformed", "default", "pod", "not-a-uuid"},
+		{"UID invalid hex", "default", "pod", "zzzzzzzz-d4df-4263-bf04-88ce73cc90c1"},
+		{"UID URN", "default", "pod", "urn:uuid:" + uid},
+		{"UID braces", "default", "pod", "{" + uid + "}"},
+		{"UID no hyphens", "default", "pod", strings.ReplaceAll(uid, "-", "")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++; w.WriteHeader(http.StatusOK) }))
+			defer server.Close()
+			client, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = DeleteNodeDebugPod(context.Background(), client, tc.namespace, tc.podName, types.UID(tc.uid))
+			if err == nil {
+				t.Fatal("expected invalid identity to be rejected")
+			}
+			if requests != 0 {
+				t.Fatalf("invalid identity issued %d Kubernetes requests", requests)
+			}
+		})
+	}
+}
+
+func TestValidateNodeDebugPodIdentityAcceptsKubernetesNames(t *testing.T) {
+	for _, tc := range []struct{ namespace, podName string }{
+		{"default", "radar-node-debug-worker-1-123"},
+		{"team-a", "debug.worker-1"},
+		{strings.Repeat("a", 63), strings.Repeat("a", 253)},
+	} {
+		if err := ValidateNodeDebugPodIdentity(tc.namespace, tc.podName, "fdde0bca-d4df-4263-bf04-88ce73cc90c1"); err != nil {
+			t.Fatalf("valid namespace/name rejected: %v", err)
+		}
 	}
 }
